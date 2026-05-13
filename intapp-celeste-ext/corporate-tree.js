@@ -311,7 +311,7 @@ const CorporateTree = (() => {
 
       try {
         const { intapp_token, intapp_credentials } = await storageGet(['intapp_token', 'intapp_credentials']);
-        const token   = intapp_token?.token || intapp_token?.accessToken;
+        const token   = intapp_token?.accessToken || intapp_token?.token;
         const appHost = intapp_credentials?.appHost;
         if (!token)   throw new Error('No Intapp token — open the credentials extension and save & test Intapp first.');
         if (!appHost) throw new Error('No Intapp app host configured in credentials.');

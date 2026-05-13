@@ -1,13 +1,28 @@
 {
   "manifest_version": 3,
   "name": "Celeste for Intapp Requests",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Celeste AI assistant drawer with corporate tree panel for Intapp request pages.",
 
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
+  },
+
+  "permissions": [
+    "storage",
+    "clipboardRead",
+    "clipboardWrite"
+  ],
+
+  "host_permissions": [
+    "https://*/*"
+  ],
+
+  "action": {
+    "default_popup": "credentials.html",
+    "default_title": "Celeste Credentials"
   },
 
   "background": {

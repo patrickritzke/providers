@@ -240,6 +240,23 @@
     }
   });
 
+  // Test API from popup
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === 'TEST_PARTY_API') {
+      const url = `/api/common/v1/parties/${encodeURIComponent(msg.partyId)}?properties=CorporateFamily`;
+      fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } })
+        .then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(`${r.status}: ${t.replace(/<[^>]+>/g,' ').trim().slice(0,150)}`); }))
+        .then(data => {
+          const trees = data.corporateTrees;
+          sendResponse({ ok: true, summary: trees
+            ? `${trees.length} tree(s): ${trees.map(t => `${t.name} (${t.providerType})`).join(', ')}`
+            : `No corporateTrees. Keys: ${Object.keys(data).join(', ')}` });
+        })
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true;
+    }
+  });
+
   // Esc to close
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && drawerRoot && drawerRoot.classList.contains('celeste-open')) {

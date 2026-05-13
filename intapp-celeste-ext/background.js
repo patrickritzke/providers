@@ -61,17 +61,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ── Corporate family tree fetch (called by content script) ───────────────
   if (msg.type === 'FETCH_CORPORATE_FAMILY') {
-    const { partyId, appHost } = msg;
-    console.log('[Celeste-bg] fetching party', partyId, 'from', appHost);
+    const { partyId } = msg;
 
     async function doFetch() {
-      // Always use the freshest token from storage
       const stored = await new Promise(r => chrome.storage.local.get(['intapp_token', 'intapp_credentials'], r));
       const token   = stored.intapp_token?.accessToken || stored.intapp_token?.token;
       const creds   = stored.intapp_credentials;
+      const appHost = creds?.appHost;
 
-      if (!token)   throw new Error('No Intapp token — open the Celeste extension popup and Save & Test Intapp credentials.');
-      if (!appHost) throw new Error('No Intapp app host configured.');
+      console.log('[Celeste-bg] fetching party', partyId, '| host:', appHost, '| token:', token ? token.slice(0,12)+'…' : 'MISSING');
+
+      if (!token)   throw new Error('No Intapp token — open the Celeste popup and Save & Test.');
+      if (!appHost) throw new Error('No Intapp app host — open the Celeste popup and enter credentials.');
 
       // Check expiry and refresh if needed
       const expiresAt = stored.intapp_token?.expiresAt || 0;

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Celeste for Intapp Requests",
+  "version": "0.1.0",
+  "description": "Adds a Celeste AI assistant drawer to the Intapp request page.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://shalaka2-sand.opensandbox2.intapp.com/app/request.aspx*"
+      ],
+      "js": ["content.js"],
+      "css": ["drawer.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

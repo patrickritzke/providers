@@ -1,0 +1,368 @@
+/* ==========================================================================
+   Celeste Drawer — injected styles
+   All selectors are prefixed with .celeste- to avoid clashing with the host
+   Intapp page styles. No Tailwind / no CSS resets leak across the boundary.
+   ========================================================================== */
+
+/* ----- design tokens ---------------------------------------------------- */
+.celeste-root {
+  --c-bg:        #ffffff;
+  --c-fg:        #292221;
+  --c-muted:     #6b7280;
+  --c-muted-2:   #9ca3af;
+  --c-border:    #e5e7eb;
+  --c-border-2:  #d8d8df;
+  --c-card:      #ffffff;
+  --c-card-hover:#f8fafc;
+  --c-primary:   #0e54a9;
+  --c-primary-fg:#ffffff;
+  --c-input-bg:  #ffffff;
+  --c-input-bd:  #e2e8f0;
+  --c-link:      #0e54a9;
+  --c-shadow:    0 1px 2px rgba(0,0,0,.05);
+  --c-shadow-lg: -8px 0 24px rgba(15, 23, 42, .08);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  color: var(--c-fg);
+  box-sizing: border-box;
+}
+.celeste-root *, .celeste-root *::before, .celeste-root *::after {
+  box-sizing: border-box;
+}
+
+/* ----- header trigger button (lives inside Intapp page header) ---------- */
+.celeste-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  margin: 0 12px 0 0;
+  font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0e54a9 0%, #207cec 100%);
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(14, 84, 169, .25);
+  transition: filter .12s ease, box-shadow .12s ease, transform .12s ease;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.celeste-trigger:hover  { filter: brightness(1.06); box-shadow: 0 2px 6px rgba(14,84,169,.3); }
+.celeste-trigger:active { transform: translateY(1px); }
+.celeste-trigger svg    { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* ----- backdrop --------------------------------------------------------- */
+.celeste-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, .25);
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s ease;
+  z-index: 2147483646;
+}
+.celeste-root.celeste-open .celeste-backdrop {
+  opacity: 1; pointer-events: auto;
+}
+
+/* ----- drawer ----------------------------------------------------------- */
+.celeste-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 440px; max-width: 96vw;
+  background: var(--c-bg);
+  border-left: 1px solid var(--c-border);
+  box-shadow: var(--c-shadow-lg);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .25s cubic-bezier(.2,.8,.2,1);
+  z-index: 2147483647;
+}
+.celeste-root.celeste-open .celeste-drawer { transform: translateX(0); }
+
+/* ----- header ----------------------------------------------------------- */
+.celeste-header {
+  flex-shrink: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg);
+}
+.celeste-header-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.celeste-header-left {
+  display: flex; align-items: center; gap: 10px;
+}
+.celeste-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--c-primary);
+  letter-spacing: -0.01em;
+}
+.celeste-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: transparent; border: 0; border-radius: 6px;
+  color: #4b5563; cursor: pointer;
+  transition: background .12s ease;
+}
+.celeste-icon-btn:hover { background: #f3f4f6; }
+.celeste-icon-btn svg   { width: 16px; height: 16px; }
+.celeste-header-right {
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* ----- body container --------------------------------------------------- */
+.celeste-body {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  padding: 24px 20px 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.celeste-body-inner {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  align-items: stretch; justify-content: center;
+  gap: 16px;
+}
+
+/* logo block (Intapp Governance wordmark area) */
+.celeste-logo {
+  display: flex; justify-content: flex-end;
+  margin-bottom: 4px;
+  opacity: .9;
+}
+
+/* greeting */
+.celeste-greeting {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--c-fg);
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+/* ----- suggested-prompt cards ------------------------------------------ */
+.celeste-suggestions {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.celeste-suggestion {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  box-shadow: var(--c-shadow);
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+  text-align: left;
+}
+.celeste-suggestion:hover {
+  border-color: rgba(14, 84, 169, .3);
+  box-shadow: 0 2px 6px rgba(15,23,42,.06);
+}
+.celeste-suggestion-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: rgba(41,34,33,.6);
+}
+.celeste-suggestion-head svg { width: 14px; height: 14px; }
+.celeste-suggestion-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-fg);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ----- input area ------------------------------------------------------- */
+.celeste-input-wrap {
+  flex-shrink: 0;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.celeste-input-card {
+  width: 100%;
+  background: var(--c-input-bg);
+  border: 1px solid var(--c-input-bd);
+  border-radius: 10px;
+  box-shadow: var(--c-shadow);
+  padding: 10px 0;
+  display: flex; flex-direction: column; gap: 8px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.celeste-input-card:focus-within {
+  border-color: rgba(14, 84, 169, .55);
+  box-shadow: 0 0 0 3px rgba(14, 84, 169, .15);
+}
+.celeste-textarea {
+  width: 100%;
+  min-height: 24px;
+  max-height: 160px;
+  padding: 0 14px;
+  border: 0;
+  resize: none;
+  outline: none;
+  background: transparent;
+  font: 400 15px/22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0f172a;
+  overflow-y: auto;
+}
+.celeste-textarea::placeholder { color: #94a3b8; }
+
+.celeste-input-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px;
+}
+.celeste-toolbar-left  { display: flex; align-items: center; gap: 4px; }
+.celeste-toolbar-right { display: flex; align-items: center; gap: 8px; }
+
+.celeste-tool-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-2);
+  border-radius: 8px;
+  color: #1f2937;
+  cursor: pointer;
+  box-shadow: var(--c-shadow);
+  transition: background .12s ease;
+  position: relative;
+}
+.celeste-tool-btn:hover { background: #f8fafc; }
+.celeste-tool-btn svg   { width: 16px; height: 16px; }
+
+/* connectors stack */
+.celeste-connectors {
+  display: flex; align-items: center;
+  height: 32px; padding: 4px 6px 4px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.celeste-connectors:hover { background: var(--c-border); }
+.celeste-conn-dot {
+  position: relative;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-right: -6px;
+}
+.celeste-conn-dot:nth-child(1) { z-index: 50; }
+.celeste-conn-dot:nth-child(2) { z-index: 40; }
+.celeste-conn-dot:nth-child(3) { z-index: 30; }
+.celeste-conn-dot img { width: 16px; height: 16px; object-fit: contain; }
+
+/* model pill */
+.celeste-model-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 12px;
+  background: transparent;
+  border: 0; border-radius: 8px;
+  font: 500 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--c-fg);
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.celeste-model-btn:hover { background: var(--c-border); }
+.celeste-model-btn svg   { width: 14px; height: 14px; }
+
+/* send button */
+.celeste-send {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  background: var(--c-primary);
+  color: var(--c-primary-fg);
+  border: 0; border-radius: 8px;
+  cursor: pointer;
+  box-shadow: var(--c-shadow);
+  transition: background .12s ease, opacity .12s ease;
+}
+.celeste-send:hover                { background: #0c4992; }
+.celeste-send:disabled             { opacity: .5; cursor: not-allowed; }
+.celeste-send svg                  { width: 14px; height: 14px; }
+
+/* footer disclaimer */
+.celeste-disclaimer {
+  margin: 0;
+  text-align: center;
+  font: 300 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--c-muted);
+}
+.celeste-disclaimer a {
+  color: var(--c-link);
+  text-decoration: none;
+  transition: color .12s ease;
+}
+.celeste-disclaimer a:hover { text-decoration: underline; }
+
+/* needed so the popover positions relative to the playbook button */
+.celeste-pb-wrap { position: relative; display: inline-flex; }
+
+/* textarea container so the textarea sizes naturally inside the input card */
+.celeste-textarea-wrap {
+  width: 100%;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+}
+
+/* ----- playbook popover ------------------------------------------------- */
+.celeste-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 280px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.15);
+  padding: 6px;
+  z-index: 10;
+  display: none;
+}
+.celeste-pb-wrap .celeste-tool-btn.celeste-open ~ .celeste-popover { display: block; }
+.celeste-popover-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 8px 10px 6px;
+}
+.celeste-playbook {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.celeste-playbook:hover { background: #f3f4f6; }
+.celeste-playbook-name {
+  font-size: 13px; font-weight: 500; color: var(--c-fg);
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.celeste-playbook-icon {
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #0e54a9 0%, #207cec 100%);
+  color: #fff;
+  font-size: 11px; font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* small util */
+.celeste-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

@@ -85,7 +85,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
       }
 
-      const url = `https://${appHost}/api/common/v1/parties/${encodeURIComponent(partyId)}?properties=CorporateFamily`;
+      const cleanHost = appHost.replace(/\/+$/, '').replace(/\/api$/, '');
+      const url = `https://${cleanHost}/api/common/v1/parties/${encodeURIComponent(partyId)}?properties=CorporateFamily`;
       console.log('[Celeste-bg] GET', url);
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${activeToken}`, Accept: 'application/json' },

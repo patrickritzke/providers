@@ -5,6 +5,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== 'FETCH_CORPORATE_FAMILY') return false;
 
   const { partyId, token, appHost } = msg;
+  console.log('[Celeste-bg] fetching party', partyId, 'from', appHost);
   const url = `https://${appHost}/api/party/v1/parties/${encodeURIComponent(partyId)}?properties=CorporateFamily`;
 
   fetch(url, {

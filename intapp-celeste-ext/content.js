@@ -231,10 +231,12 @@
 
   // Listen for tree trigger messages from the Celeste iframe receiver
   window.addEventListener('message', (event) => {
+    console.log('[Celeste] message received', event.origin, event.data?.type);
     if (event.origin !== CELESTE_ORIGIN) return;
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type === 'CELESTE_OPEN_TREE' && data.partyId) {
+      console.log('[Celeste] opening tree for', data.partyId);
       openTreeDrawer(data.partyId);
     }
   });

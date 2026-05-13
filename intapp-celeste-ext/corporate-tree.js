@@ -359,6 +359,7 @@ const CorporateTree = (() => {
 
   // Programmatically load a party by ID (called by content.js on tree trigger)
   function loadParty(partyId) {
+    console.log('[CorporateTree] loadParty called', partyId, 'triggerLoad:', !!state._triggerLoad);
     if (state._triggerLoad) state._triggerLoad(partyId);
   }
 

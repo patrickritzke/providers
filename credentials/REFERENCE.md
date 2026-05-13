@@ -1,76 +1,105 @@
 # credentials — Reference
 
-**Extension name:** PR_EXT_credentials  
-**Version:** 1.1.4  
-**Purpose:** Drop-in credential manager component for Intapp Chrome extensions. Manages credentials and token caching for 6 third-party APIs from a single self-contained popup UI.
+**Extension:** PR_EXT_credentials v1.1.4  
+**Role:** Canonical credential manager. Users enter credentials here once. Every other extension reads from the same `chrome.storage.local` keys.
 
-> **Note:** This is functionally identical to `tree-compare/` (PR_EXT_tree_compare v1.1.4). The only difference is the file naming (`PR_EXT_credentials.*` vs `PR_EXT_tree_compare.*`) and the inner footer label. All logic, storage keys, worker routes, and patterns are the same.
-
----
-
-## Architecture
-
-```
-PR_EXT_credentials.html          ← popup shell (320px)
-  └─ <div id="credentials-root"> ← mount point
-PR_EXT_credentials.js            ← IIFE: renders UI + exposes CredentialsManager global
-PR_EXT_credentials_worker.js     ← Cloudflare Worker (ES module) — CORS proxy for S&P
-```
-
-**Manifest V3** — no background service worker. The popup is the entire extension. All state lives in `chrome.storage.local`.
+Two files matter:
+- `PR_EXT_credentials.js` — all logic, UI, and storage. Self-contained IIFE.
+- `PR_EXT_credentials_worker.js` — Cloudflare Worker proxy for S&P APIs.
 
 ---
 
-## CredentialsManager API
+## Embedding in Another Extension
 
-Exposed as a global from the IIFE. Auto-mounts on `DOMContentLoaded` if `#credentials-root` exists.
+```html
+<!-- popup.html or options.html -->
+<div id="credentials-root"></div>
+<script src="PR_EXT_credentials.js"></script>
+<!-- auto-mounts on DOMContentLoaded -->
+```
+
+Manifest requirements:
+```json
+"permissions": ["storage", "clipboardRead", "clipboardWrite"],
+"host_permissions": ["https://*/*"]
+```
+
+Or open as a dedicated page from any popup:
+```js
+chrome.runtime.openOptionsPage();
+// manifest: "options_page": "PR_EXT_credentials.html"
+```
+
+---
+
+## Reading Credentials
 
 ```js
-CredentialsManager.mount('#credentials-root')  // custom selector (optional)
+// Via CredentialsManager (if the JS is included)
+const { dnb_basic_token } = await CredentialsManager.get(['dnb_basic_token']);
 
-// Storage wrappers (promisified chrome.storage.local)
-const data = await CredentialsManager.get(['dnb_basic_token', 'sp_username']);
-await CredentialsManager.set({ dnb_basic_token: 'abc' });
-await CredentialsManager.remove(['spx_token']);
+// Or directly from storage anywhere (background.js, content.js, popup.js)
+const { sp_username, sp_password } = await chrome.storage.local.get(['sp_username', 'sp_password']);
 
-// Returns valid Xpressapi bearer, throws if missing or expiring
+// Intapp (stored as an object)
+const { intapp_credentials } = await chrome.storage.local.get(['intapp_credentials']);
+const { appHost, clientId, clientSecret, redirectUri } = intapp_credentials || {};
+
+// Xpressapi bearer token with expiry check
 const token = await CredentialsManager.getSpxToken();
-// throws: 'NO_SPX_TOKEN' | 'SPX_TOKEN_EXPIRED'
-```
-
-### `getSpxToken()` expiry logic
-
-```js
-if (Date.now() >= spx_token.expiresAt - 30000) throw new Error('SPX_TOKEN_EXPIRED');
-// 30-second buffer before actual expiry
+// throws 'NO_SPX_TOKEN' or 'SPX_TOKEN_EXPIRED' if not ready
 ```
 
 ---
 
-## Storage Keys
+## Storage Keys (Canonical Schema)
 
-All in `chrome.storage.local`. Can be read directly with `chrome.storage.local.get` — no need to go through `CredentialsManager.get`.
+All in `chrome.storage.local`. These are the authoritative key names used across all extensions.
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `intapp_credentials` | `{ appHost, tenantId, clientId, clientSecret, redirectUri }` | Intapp OAuth2 config |
-| `intapp_token` | `{ token, expiresAt }` | Cached Intapp bearer (managed by background, not UI) |
-| `dnb_basic_token` | `string` | Pre-encoded `btoa('key:secret')` |
+| `intapp_token` | `{ token, expiresAt }` | Cached bearer — managed by host extension background, not this UI |
+| `dnb_basic_token` | `string` | Pre-encoded `btoa('key:secret')` from D&B Direct+ portal |
 | `geoapify_api_key` | `string` | Raw API key |
 | `moodys_username` | `string` | BvD/Orbis login |
 | `moodys_password` | `string` | BvD/Orbis password |
-| `moodys_base_url` | `string` | Optional BvD endpoint override (falls back to hardcoded URL) |
+| `moodys_base_url` | `string` | Optional BvD endpoint override (falls back to hardcoded URL if absent) |
 | `sp_username` | `string` | S&P Capital IQ username |
 | `sp_password` | `string` | S&P Capital IQ password |
 | `spx_username` | `string` | S&P Xpressapi username |
 | `spx_password` | `string` | S&P Xpressapi password |
-| `spx_token` | `{ access_token, refresh_token, expiresAt }` | Cached Xpressapi bearer |
+| `spx_token` | `{ access_token, refresh_token, expiresAt }` | Cached Xpressapi bearer — set after successful Test |
+
+---
+
+## Copy All / Paste All
+
+The key portability feature. Lets users move all credentials between extensions (or browser profiles) via clipboard.
+
+**Format:** pipe-separated `field-id:value` pairs
+```
+intapp-host:myapp.intapp.com|intapp-client-id:ABC123|dnb-token:base64...|sp-user:user@co.com
+```
+
+**Field IDs** (used in clipboard format — note hyphens, not underscores):
+```
+intapp-host, intapp-tenant, intapp-client-id, intapp-secret, intapp-redirect
+dnb-token
+geoapify-key
+moodys-user, moodys-pass
+sp-user, sp-pass
+spx-user, spx-pass
+```
+
+**Copy:** serializes all non-empty visible fields to clipboard.  
+**Paste:** parses clipboard → updates visible fields → persists to `chrome.storage.local`. Intapp fields merge with existing storage (partial paste is safe). Splits on first `:` only, so URLs and base64 tokens with colons survive.
 
 ---
 
 ## Provider Auth Details
 
-### 1. Intapp — OAuth2 `client_credentials`
+### Intapp — OAuth2 `client_credentials`
 
 ```
 POST https://{appHost}/auth/oauth/token
@@ -79,11 +108,10 @@ Content-Type: application/x-www-form-urlencoded
 grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}&redirect_uri={redirectUri}
 ```
 
-- `appHost` stored without protocol — stripped on save with `.replace(/^https?:\/\//, '')`
-- Test delegates to background via `chrome.runtime.sendMessage({ type: 'TEST_INTAPP', creds: {...} })`
-- Response shape: `{ ok: bool, error?: string, detail?: string }`
+- `appHost` = subdomain only, no `https://` (stripped on save)
+- Response: standard OAuth2 `{ access_token, refresh_token, expires_in }`
 
-### 2. D&B Direct+ — pre-encoded Basic → bearer
+### D&B Direct+ — pre-encoded Basic → bearer
 
 ```
 POST https://plus.dnb.com/v2/token
@@ -93,28 +121,22 @@ Content-Type: application/json
 { "grant_type": "client_credentials" }
 ```
 
-- User pre-computes `btoa('key:secret')` — the extension stores and uses it as-is
-- No proxy needed; D&B allows direct browser requests
-- Test delegates via `chrome.runtime.sendMessage({ type: 'TEST_DNB', token })`
+- User provides `btoa('key:secret')` pre-encoded — no separate key/secret fields
+- No proxy needed
 
-### 3. Geoapify — API key query param
+### Geoapify — API key as query param
 
 ```
 GET https://api.geoapify.com/v1/geocode/search?text={query}&apiKey={geoapify_api_key}
 ```
 
-- Direct fetch, no proxy
-- Test probes `'1600 Pennsylvania Ave, Washington DC'`
-- Response: `{ features: [{ properties: { formatted: string } }] }`
+- No token exchange, no proxy
 - Free tier: 3,000 req/day
 
-### 4. Moody's / BvD (Orbis) — SOAP session
+### Moody's / BvD (Orbis) — SOAP session
 
-**Endpoint:** `https://webservices.bvdinfo.com/v1.3/orbis4/remoteaccess.asmx`  
-(hardcoded since v1.1.4; `moodys_base_url` in storage overrides this in Test All only)
-
-```xml
-POST {endpoint}
+```
+POST https://webservices.bvdinfo.com/v1.3/orbis4/remoteaccess.asmx
 Content-Type: text/xml; charset=utf-8
 SOAPAction: http://bvdep.com/webservices/Open
 
@@ -130,211 +152,64 @@ SOAPAction: http://bvdep.com/webservices/Open
 </soapenv:Envelope>
 ```
 
-- Success: response contains `<OpenResult>R1|{sessionId}</OpenResult>`
-- Extracted with: `text.match(/<OpenResult>(.*?)<\/OpenResult>/)`
-- Sessions are NOT cached — callers must call Open before each use
-- 403 = bad credentials (not a CORS or code issue)
-- No proxy needed
+- Response: `<OpenResult>R1|{sessionId}</OpenResult>` — extract with regex
+- Sessions not cached; call Open before each use
+- No proxy needed; 403 = bad credentials
 
-### 5. S&P Capital IQ — Basic → Bearer via proxy
+### S&P Capital IQ — Basic → bearer via proxy
 
 ```
 POST https://delicate-union-802c.patrickritzke.workers.dev/token
 Authorization: Basic {btoa(username:password)}
 Content-Type: application/x-www-form-urlencoded
-Accept: */*
 
 username={username}&password={password}
 ```
 
-- Proxy forwards to: `https://api-ciq.marketintelligence.spglobal.com/gdsapi/rest/authenticate/api/v1/token`
-- Response: `{ access_token, ... }`
-- Token is NOT cached to storage — fetched fresh on each test
-- MUST use proxy (S&P rejects requests with browser `Origin` header)
+- Proxy required (S&P rejects browser `Origin` header)
+- Forwards to `https://api-ciq.marketintelligence.spglobal.com/gdsapi/rest/authenticate/api/v1/token`
 
-### 6. S&P Xpressapi — unusual auth pattern
+### S&P Xpressapi — unusual auth (credentials as query params)
 
-**Via proxy** (`POST /xpx/token`): extension sends `{ username, password }` as JSON.
+Extension sends `{ username, password }` JSON to proxy. Worker reconstructs:
 
-**Worker reconstructs the actual request:**
 ```
 POST https://xpressapi.marketplace.spglobal.com/authenticate/api/v1/token
-     ?username={username}&password={password}   ← credentials as URL query params
-Authorization: Basic                             ← trailing space, NO value after it
+     ?username={username}&password={password}
+Authorization: Basic        ← trailing space, NO value
 Content-Type: application/x-www-form-urlencoded
 
-{ "grant_type" : "client_credentials" }         ← JSON string sent with form-encoded CT
+{ "grant_type" : "client_credentials" }    ← JSON string, despite form-encoded CT
 ```
 
-> **Critical gotcha:** `Authorization: Basic ` with a trailing space and nothing after it. Standard `Basic btoa(...)` will be rejected. Body is a literal JSON-looking string despite `Content-Type: application/x-www-form-urlencoded`. This is how Xpressapi expects it (verified via Postman).
-
-**Token storage after successful auth:**
-```js
-{
-  access_token: '...',
-  refresh_token: '...' | null,
-  expiresAt: Date.now() + (expires_in_seconds || 3600) * 1000
-}
-```
-
-**Search** (via proxy `/xpx/search`):
-```
-POST {proxy}/xpx/search
-Authorization: Bearer {access_token}
-X-SPX-Path: /the/api/path
-Content-Type: application/json
-```
+- `Authorization: Basic ` with trailing space and no token — anything else is rejected
+- Token stored as `{ access_token, refresh_token, expiresAt }` with 30s expiry buffer
+- `getSpxToken()` throws before expiry to give callers time to refresh
 
 ---
 
 ## Cloudflare Worker
 
 **URL:** `https://delicate-union-802c.patrickritzke.workers.dev`  
-**File:** `PR_EXT_credentials_worker.js`  
-**Format:** ES module — `export default { async fetch(request) {} }` (NOT legacy `addEventListener`)
+**Deploy format:** ES module — `export default { async fetch(request) {} }` (not legacy `addEventListener`)
 
-| Route | Proxies to |
-|-------|------------|
+| Route | Purpose |
+|-------|---------|
 | `POST /token` | S&P CapIQ auth |
 | `POST /search` | S&P CapIQ search |
 | `POST /xpx/token` | Xpressapi token (injects query params + `Authorization: Basic `) |
-| `POST /xpx/search` | Xpressapi search (reads `X-SPX-Path` header) |
+| `POST /xpx/search` | Xpressapi search (reads `X-SPX-Path` header for API path) |
 | `OPTIONS *` | CORS preflight → 204 |
-
-CORS headers on all responses:
-```
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: POST, OPTIONS
-Access-Control-Allow-Headers: Content-Type, Authorization, X-SPX-Path, Cache-Control, Accept
-```
-
----
-
-## UI Patterns
-
-### Embedding in another extension
-
-```html
-<div id="credentials-root"></div>
-<script src="PR_EXT_credentials.js"></script>
-<!-- auto-mounts on DOMContentLoaded -->
-```
-
-Manifest requirements:
-```json
-"permissions": ["storage", "clipboardRead", "clipboardWrite"],
-"host_permissions": ["https://*/*"]
-```
-
-### As standalone options page
-
-```json
-"options_page": "PR_EXT_credentials.html"
-```
-
-### Template injection
-
-The entire UI (CSS + HTML) is a single `TEMPLATE` string inside the IIFE, injected via `root.innerHTML = TEMPLATE`. Fully self-contained, no external stylesheets.
-
-### `saveAndTest` pattern
-
-```js
-async function saveAndTest(id, saveFn, testFn) {
-  // Save always runs first and independently
-  await saveFn();           // on failure → shows error, returns early
-  const result = await testFn();
-  // test failure → shows "✓ Saved — test failed: ..."
-  // test success → shows "✓ Saved & connected — {result}"
-}
-```
-
-### Toast system
-
-```js
-toast(id, message, type, durationMs)
-// type: 'ok' | 'err' | 'info'
-// Each section has <div class="creds-toast" id="toast-{id}">
-```
-
-### Copy All / Paste All clipboard format
-
-```
-key:value|key:value|key:value
-```
-
-- Serialized keys use hyphens matching HTML `id` attributes (e.g. `intapp-host`) — not storage key names (which use underscores)
-- Parsed with `chunk.indexOf(':')` → splits on first colon only, so URLs and base64 tokens survive
-- On paste: updates visible fields AND persists to storage; Intapp fields merged with existing stored object (partial paste safe)
-
-### Test All output format
-
-```
-✅ Intapp: token received
-✅ D&B: token received
-✅ Geoapify: 1600 Pennsylvania Ave NW, Washington, DC...
-⬜ Moody's / BvD: not configured
-❌ S&P Capital IQ: HTTP 401
-✅ S&P Xpressapi: token received
-```
-
----
-
-## Background Message Contract
-
-The popup sends these messages to the host extension's `background.js`:
-
-| Type | Payload | Expected response |
-|------|---------|-------------------|
-| `TEST_INTAPP` | `{ creds: { appHost, clientId, clientSecret, redirectUri } }` | `{ ok: bool, error?: string, detail?: string }` |
-| `TEST_DNB` | `{ token: string }` | `{ ok: bool, error?: string, detail?: string }` |
-
----
-
-## Debugging Console Scripts
-
-Run from popup DevTools (right-click popup → Inspect → Console):
-
-```js
-// Test Xpressapi via proxy
-(async () => {
-  const s = await chrome.storage.local.get(['spx_username', 'spx_password']);
-  const res = await fetch('https://delicate-union-802c.patrickritzke.workers.dev/xpx/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: s.spx_username, password: s.spx_password })
-  });
-  console.log(res.status, await res.text());
-})();
-
-// Test BvD SOAP
-(async () => {
-  const s = await chrome.storage.local.get(['moodys_username', 'moodys_password']);
-  const soap = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="http://bvdep.com/webservices/"><soapenv:Header/><soapenv:Body><web:Open><web:username>${s.moodys_username}</web:username><web:password>${s.moodys_password}</web:password></web:Open></soapenv:Body></soapenv:Envelope>`;
-  const res = await fetch('https://webservices.bvdinfo.com/v1.3/orbis4/remoteaccess.asmx', {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': 'http://bvdep.com/webservices/Open' },
-    body: soap
-  });
-  console.log(res.status, await res.text());
-})();
-
-// Dump all storage keys (no secret values)
-(async () => {
-  const s = await chrome.storage.local.get(null);
-  Object.keys(s).forEach(k => {
-    const v = s[k];
-    console.log(k, typeof v === 'string' ? `string[${v.length}]` : JSON.stringify(v).slice(0, 80));
-  });
-})();
-```
 
 ---
 
 ## Known Gotchas
 
-1. **Cloudflare Worker syntax** — must use `export default { async fetch() }`, NOT `addEventListener('fetch')`
-2. **BvD is SOAP, not REST** — `api.bvdinfo.com` is a different product. A 403 from SOAP = bad credentials, not a code issue
-3. **Xpressapi Content-Type** — 415 error means wrong CT reaching Xpressapi. Body must be the literal string `'{ "grant_type" : "client_credentials" }'` with `Content-Type: application/x-www-form-urlencoded`
-4. **Copy All key names use hyphens** — `CP_KEYS` items like `'intapp-host'` match HTML element IDs, not storage keys (`intapp_credentials`). Two separate namespaces.
-5. **D&B token is pre-encoded** — user computes `btoa('key:secret')` themselves; no separate key/secret fields
-6. **Intapp appHost — no protocol** — store subdomain only; extension prepends `https://` when building the token URL
+| # | Gotcha |
+|---|--------|
+| 1 | **Xpressapi auth** — `Authorization: Basic ` with trailing space, no value. Body is a JSON-looking string with `Content-Type: application/x-www-form-urlencoded`. This is what Xpressapi expects. |
+| 2 | **BvD is SOAP** — `webservices.bvdinfo.com` (SOAP). `api.bvdinfo.com` is a different REST product. 403 = bad credentials, correct request format. |
+| 3 | **D&B token is pre-encoded** — user must compute `btoa('key:secret')` themselves before entering it. |
+| 4 | **Intapp appHost — no protocol** — store subdomain only; extension prepends `https://` when building token URL. |
+| 5 | **Copy All key names use hyphens** — `intapp-host` in clipboard, `intapp_credentials.appHost` in storage. Two separate namespaces. |
+| 6 | **Worker ES module format** — `export default { async fetch() }` required. Legacy `addEventListener('fetch')` causes silent failures. |

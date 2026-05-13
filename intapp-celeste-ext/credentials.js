@@ -434,10 +434,8 @@ const CredentialsManager = (() => {
       const clientSecret = document.getElementById('creds-intapp-secret').value.trim();
       const redirectUri  = document.getElementById('creds-intapp-redirect').value.trim();
       if (!appHost)      { toast('intapp', 'App Host is required', 'err'); return; }
-      if (!tenantId)     { toast('intapp', 'Tenant ID is required', 'err'); return; }
       if (!clientId)     { toast('intapp', 'Client ID is required', 'err'); return; }
       if (!clientSecret) { toast('intapp', 'Client Secret is required', 'err'); return; }
-      if (!redirectUri)  { toast('intapp', 'Redirect URI is required', 'err'); return; }
       await saveAndTest('intapp',
         () => set({ intapp_credentials: { appHost, tenantId, clientId, clientSecret, redirectUri } }),
         async () => {
@@ -638,16 +636,25 @@ const CredentialsManager = (() => {
         catch (e) { results.push(`❌ ${label}: ${e.message}`); }
       };
 
-      // Intapp
-      const ic = s.intapp_credentials || {};
+      // Intapp — save form fields first if filled, then test from storage
+      const formHost   = document.getElementById('creds-intapp-host')?.value.trim().replace(/^https?:\/\//, '');
+      const formId     = document.getElementById('creds-intapp-client-id')?.value.trim();
+      const formSecret = document.getElementById('creds-intapp-secret')?.value.trim();
+      if (formHost && formId && formSecret) {
+        await set({ intapp_credentials: {
+          appHost:      formHost,
+          tenantId:     document.getElementById('creds-intapp-tenant')?.value.trim() || '',
+          clientId:     formId,
+          clientSecret: formSecret,
+          redirectUri:  document.getElementById('creds-intapp-redirect')?.value.trim() || '',
+        }});
+      }
+      const ic = (await get(['intapp_credentials'])).intapp_credentials || {};
       if (ic.appHost && ic.clientId && ic.clientSecret) {
         await run('Intapp', async () => {
-          const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: ic.clientId, client_secret: ic.clientSecret, redirect_uri: ic.redirectUri || '' });
-          const res = await fetch(`https://${ic.appHost}/auth/oauth/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const d = await res.json();
-          if (!d.access_token) throw new Error('No token');
-          return 'token received';
+          const res = await chrome.runtime.sendMessage({ type: 'TEST_INTAPP', creds: { appHost: ic.appHost, clientId: ic.clientId, clientSecret: ic.clientSecret, redirectUri: ic.redirectUri || '' } });
+          if (!res.ok) throw new Error(res.error);
+          return res.detail;
         });
       } else results.push('⬜ Intapp: not configured');
 

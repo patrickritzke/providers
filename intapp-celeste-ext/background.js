@@ -50,17 +50,59 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ── Corporate family tree fetch (called by content script) ───────────────
   if (msg.type === 'FETCH_CORPORATE_FAMILY') {
-    const { partyId, token, appHost } = msg;
+    const { partyId, appHost } = msg;
     console.log('[Celeste-bg] fetching party', partyId, 'from', appHost);
-    const url = `https://${appHost}/api/party/v1/parties/${encodeURIComponent(partyId)}?properties=CorporateFamily`;
-    fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    })
-      .then(res => res.json().then(data => ({ ok: res.ok, status: res.status, data })))
-      .then(({ ok, status, data }) => {
-        if (!ok) sendResponse({ ok: false, error: `Intapp API ${status}` });
-        else sendResponse({ ok: true, data });
-      })
+
+    async function doFetch() {
+      // Always use the freshest token from storage
+      const stored = await new Promise(r => chrome.storage.local.get(['intapp_token', 'intapp_credentials'], r));
+      const token   = stored.intapp_token?.accessToken || stored.intapp_token?.token;
+      const creds   = stored.intapp_credentials;
+
+      if (!token)   throw new Error('No Intapp token — open the Celeste extension popup and Save & Test Intapp credentials.');
+      if (!appHost) throw new Error('No Intapp app host configured.');
+
+      // Check expiry and refresh if needed
+      const expiresAt = stored.intapp_token?.expiresAt || 0;
+      let activeToken = token;
+      if (expiresAt && Date.now() > expiresAt - 60_000 && creds?.clientId && creds?.clientSecret) {
+        console.log('[Celeste-bg] token expired, refreshing…');
+        try {
+          const tRes = await fetch(`https://${appHost}/auth/oauth/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `grant_type=client_credentials&client_id=${encodeURIComponent(creds.clientId)}&client_secret=${encodeURIComponent(creds.clientSecret)}&redirect_uri=${encodeURIComponent(creds.redirectUri || '')}`,
+          });
+          const tData = await tRes.json();
+          if (tData.access_token) {
+            activeToken = tData.access_token;
+            const newExpiry = Date.now() + (tData.expires_in || 3600) * 1000;
+            chrome.storage.local.set({ intapp_token: { accessToken: activeToken, expiresAt: newExpiry } });
+            console.log('[Celeste-bg] token refreshed');
+          }
+        } catch (e) {
+          console.warn('[Celeste-bg] token refresh failed', e.message);
+        }
+      }
+
+      const url = `https://${appHost}/api/party/v1/parties/${encodeURIComponent(partyId)}?properties=CorporateFamily`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${activeToken}`, Accept: 'application/json' },
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const body = await res.text();
+        throw new Error(`Intapp API ${res.status} — response was not JSON (got ${contentType || 'unknown'}). Token may be expired — re-save credentials in the Celeste popup. Body preview: ${body.slice(0, 120)}`);
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(`Intapp API ${res.status}: ${data.message || data.error || JSON.stringify(data).slice(0, 100)}`);
+      return data;
+    }
+
+    doFetch()
+      .then(data => sendResponse({ ok: true, data }))
       .catch(err => sendResponse({ ok: false, error: err.message }));
     return true;
   }

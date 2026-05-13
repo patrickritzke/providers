@@ -367,6 +367,9 @@ const CorporateTree = (() => {
 
 })();
 
+// Expose on window so other content scripts in the same extension can access it
+window.CorporateTree = CorporateTree;
+
 // Auto-mount if default anchor exists
 document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('tree-root')) {

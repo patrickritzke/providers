@@ -135,9 +135,9 @@
     document.body.appendChild(drawerRoot);
 
     // Mount the corporate tree component into the tree panel
-    if (CorporateTree && !treeMounted) {
+    if (window.CorporateTree && !treeMounted) {
       treeMounted = true;
-      CorporateTree.mount('#celeste-tree-root', {
+      window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {
           // Only open the tree drawer once data has come back successfully
           if (drawerRoot) requestAnimationFrame(() => drawerRoot.classList.add('celeste-tree-open'));
@@ -220,8 +220,8 @@
     } else {
       ensureDrawer();
     }
-    if (partyId && CorporateTree) {
-      setTimeout(() => CorporateTree.loadParty(partyId), 150);
+    if (partyId && window.CorporateTree) {
+      setTimeout(() => window.CorporateTree.loadParty(partyId), 150);
     }
   }
 

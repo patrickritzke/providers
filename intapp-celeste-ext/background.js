@@ -86,6 +86,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
 
       const url = `https://${appHost}/api/party/v1/parties/${encodeURIComponent(partyId)}?properties=CorporateFamily`;
+      console.log('[Celeste-bg] GET', url);
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${activeToken}`, Accept: 'application/json' },
       });
@@ -93,7 +94,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         const body = await res.text();
-        throw new Error(`Intapp API ${res.status} — response was not JSON (got ${contentType || 'unknown'}). Token may be expired — re-save credentials in the Celeste popup. Body preview: ${body.slice(0, 120)}`);
+        // Strip HTML tags to surface the actual error message from the server
+        const plain = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+        throw new Error(`Intapp API ${res.status} at ${url} — got ${contentType || 'unknown content-type'}. Server message: ${plain}`);
       }
 
       const data = await res.json();

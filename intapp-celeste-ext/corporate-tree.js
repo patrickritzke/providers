@@ -34,12 +34,10 @@ const CorporateTree = (() => {
     });
     if (!response.ok) throw new Error(response.error);
     const data = response.data;
-    // Prefer BureauVanDijk tree; fall back to first available
-    const tree = data.corporateTrees?.find(t => t.providerType === 'BureauVanDijk')
-               ?? data.corporateTrees?.[0];
-    if (!tree?.rootCompany) throw new Error('No corporate tree in response.');
+    const trees = data.corporateTrees?.filter(t => t.rootCompany);
+    if (!trees?.length) throw new Error('No corporate tree in response.');
 
-    return flattenTree(tree.rootCompany, null);
+    return trees.flatMap(t => flattenTree(t.rootCompany, null));
   }
 
   // Recursively flatten the nested API tree into { id, name, parentId, countryCode, partyId }

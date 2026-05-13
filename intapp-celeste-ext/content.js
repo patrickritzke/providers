@@ -135,7 +135,7 @@
     document.body.appendChild(drawerRoot);
 
     // Mount the corporate tree component into the tree panel
-    if (window.CorporateTree && !treeMounted) {
+    if (CorporateTree && !treeMounted) {
       treeMounted = true;
       CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {
@@ -220,7 +220,7 @@
     } else {
       ensureDrawer();
     }
-    if (partyId && window.CorporateTree) {
+    if (partyId && CorporateTree) {
       setTimeout(() => CorporateTree.loadParty(partyId), 150);
     }
   }

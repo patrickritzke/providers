@@ -22,7 +22,6 @@ const CorporateTree = (() => {
   // ── API ────────────────────────────────────────────────────────────────────
   // Routed through the background service worker (uses stored OAuth token).
   async function fetchCorporateFamily(query) {
-    console.log('[CorporateTree] fetching party', query);
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { type: 'FETCH_CORPORATE_FAMILY', partyId: query },
@@ -37,7 +36,8 @@ const CorporateTree = (() => {
     const trees = data.corporateTrees?.filter(t => t.rootCompany);
     if (!trees?.length) throw new Error('No corporate tree in response.');
 
-    return trees.flatMap(t => flattenTree(t.rootCompany, null));
+    const nodes = trees.flatMap(t => flattenTree(t.rootCompany, null));
+    return { nodes, raw: data };
   }
 
   // Recursively flatten the nested API tree into { id, name, parentId, countryCode, partyId }
@@ -158,6 +158,25 @@ const CorporateTree = (() => {
       }
       .ct-children.collapsed { display: none; }
 
+      /* Extra sections (board, shareholders, etc.) */
+      .ct-section { margin-top: 8px; }
+      .ct-section-title {
+        padding: 6px 16px 4px;
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.6px; color: #6366f1;
+        border-top: 1px solid #e2e8f0;
+      }
+      .ct-section-item {
+        display: flex; align-items: center; gap: 4px;
+        padding: 4px 16px 4px 16px; cursor: pointer;
+        border-radius: 4px; transition: background 0.1s;
+        user-select: none;
+      }
+      .ct-section-item:hover { background: #f1f5f9; }
+      .ct-section-item.selected { background: #eef2ff; }
+      .ct-section-item .ct-name { flex: 1; font-size: 12px; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ct-section-item .ct-meta { font-size: 10px; color: #94a3b8; font-family: monospace; flex-shrink: 0; }
+
       /* Selection bar */
       .ct-sel-bar {
         position: absolute; bottom: 0; left: 0; right: 0;
@@ -186,6 +205,7 @@ const CorporateTree = (() => {
     selected:    new Set(),
     collapsed:   new Set(),
     nodes:       [],
+    raw:         null,
     onSelect:    null,
     onLoad:      null,  // called with nodes[] after a successful tree load
     actionLabel: 'Send to Celeste',
@@ -251,6 +271,105 @@ const CorporateTree = (() => {
     if (countEl) countEl.innerHTML = `<strong>${n}</strong> selected`;
   }
 
+  // ── Extra sections ────────────────────────────────────────────────────────
+  function flattenBeneficialOwners(list, result = []) {
+    if (!Array.isArray(list)) return result;
+    for (const bo of list) {
+      result.push({ id: bo.id, name: bo.name || '', pct: bo.shareHoldingPercentage ?? null });
+      flattenBeneficialOwners(bo.beneficialOwners, result);
+    }
+    return result;
+  }
+
+  function renderSectionItem(item) {
+    const isSelected = state.selected.has(item.id);
+    return `
+      <div class="ct-section-item ${isSelected ? 'selected' : ''}" data-section-item="${esc(item.id)}">
+        <span class="ct-checkbox ${isSelected ? 'checked' : ''}" data-check="${esc(item.id)}"></span>
+        <span class="ct-name" title="${esc(item.name)}">${esc(item.name)}</span>
+        <span class="ct-meta">${esc(item.meta || '')}</span>
+      </div>`;
+  }
+
+  function renderSections(treeEl, raw) {
+    // Remove any previously rendered sections
+    treeEl.querySelectorAll('.ct-section').forEach(s => s.remove());
+
+    const sections = [
+      {
+        key: 'boardMembers',
+        label: 'Board Members',
+        items: (() => {
+          const bm = raw.boardMembers?.boardMembers;
+          if (!Array.isArray(bm) || !bm.length) return null;
+          return bm.map(m => ({ id: m.id, name: m.name || '', meta: m.title || '' }));
+        })(),
+      },
+      {
+        key: 'beneficialOwners',
+        label: 'Beneficial Owners',
+        items: (() => {
+          const bo = raw.beneficialOwners?.beneficialOwners;
+          const flat = flattenBeneficialOwners(bo);
+          if (!flat.length) return null;
+          return flat.map(o => ({ id: o.id, name: o.name, meta: o.pct != null ? `${o.pct}%` : '' }));
+        })(),
+      },
+      {
+        key: 'shareholders',
+        label: 'Shareholders',
+        items: (() => {
+          const sh = raw.shareholders;
+          if (!Array.isArray(sh) || !sh.length) return null;
+          return sh.map(s => ({ id: s.id || s.partyId || s.name, name: s.name || '', meta: s.shareHoldingPercentage != null ? `${s.shareHoldingPercentage}%` : '' }));
+        })(),
+      },
+      {
+        key: 'closeAffiliates',
+        label: 'Close Affiliates',
+        items: (() => {
+          const ca = raw.closeAffiliates;
+          if (!Array.isArray(ca) || !ca.length) return null;
+          return ca.map(a => ({ id: a.id || a.partyId || a.name, name: a.name || '', meta: a.countryCode || '' }));
+        })(),
+      },
+    ];
+
+    for (const sec of sections) {
+      if (!sec.items) continue;
+      const div = document.createElement('div');
+      div.className = 'ct-section';
+      div.dataset.section = sec.key;
+      div.innerHTML = `<div class="ct-section-title">${esc(sec.label)}</div>` +
+        sec.items.map(renderSectionItem).join('');
+      treeEl.appendChild(div);
+
+      div.querySelectorAll('[data-section-item]').forEach(row => {
+        row.addEventListener('click', () => {
+          const id = row.dataset.sectionItem;
+          if (state.selected.has(id)) state.selected.delete(id);
+          else state.selected.add(id);
+          // Re-render just this section's checkboxes to avoid full re-render
+          const checkbox = row.querySelector('.ct-checkbox');
+          if (checkbox) {
+            checkbox.classList.toggle('checked', state.selected.has(id));
+          }
+          row.classList.toggle('selected', state.selected.has(id));
+          updateSelBar();
+        });
+      });
+    }
+
+    // Store section items in a lookup for onSelect
+    state._sectionItems = {};
+    for (const sec of sections) {
+      if (!sec.items) continue;
+      for (const item of sec.items) {
+        state._sectionItems[item.id] = { ...item, _section: sec.key };
+      }
+    }
+  }
+
   // ── Mount ─────────────────────────────────────────────────────────────────
   function mount(selector = '#tree-root', opts = {}) {
     const root = document.querySelector(selector);
@@ -306,11 +425,14 @@ const CorporateTree = (() => {
       updateSelBar();
 
       try {
-        state.nodes = await fetchCorporateFamily(query);
+        const result = await fetchCorporateFamily(query);
+        state.nodes = result.nodes;
+        state.raw   = result.raw;
         if (!state.nodes.length) { statusEl.textContent = 'No results found.'; return; }
 
         statusEl.textContent = `${state.nodes.length} entities — ${query}`;
         renderTree(treeEl, buildTree(state.nodes));
+        renderSections(treeEl, state.raw);
         if (state.onLoad) state.onLoad(state.nodes);
       } catch (err) {
         statusEl.textContent = `⚠ ${err.message}`;
@@ -334,10 +456,17 @@ const CorporateTree = (() => {
       if (!state.onSelect) return;
       const nodeMap = {};
       state.nodes.forEach(n => { nodeMap[n.id] = n; });
-      // Selected entity shape — includes all IDs available from the API
+      const sectionItems = state._sectionItems || {};
       const entities = [...state.selected].map(id => {
-        const n = nodeMap[id];
-        return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode };
+        if (nodeMap[id]) {
+          const n = nodeMap[id];
+          return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode };
+        }
+        if (sectionItems[id]) {
+          const s = sectionItems[id];
+          return { id: s.id, name: s.name, meta: s.meta, _section: s._section };
+        }
+        return null;
       }).filter(Boolean);
       state.onSelect({ entities, actionLabel: state.actionLabel });
     });
@@ -350,7 +479,6 @@ const CorporateTree = (() => {
 
   // Programmatically load a party by ID (called by content.js on tree trigger)
   function loadParty(partyId) {
-    console.log('[CorporateTree] loadParty called', partyId, 'triggerLoad:', !!state._triggerLoad);
     if (state._triggerLoad) state._triggerLoad(partyId);
   }
 

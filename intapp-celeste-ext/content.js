@@ -13,8 +13,6 @@
   if (window.__celesteInjected) return;
   window.__celesteInjected = true;
 
-  console.log('[Celeste] content script v0.3.7 loaded');
-
   /* ---------------- stage-aware nudge config ---------------- */
   const STAGE_PROMPTS = {
     'Client': null,
@@ -230,12 +228,10 @@
 
   // Listen for tree trigger messages from the Celeste iframe receiver
   window.addEventListener('message', (event) => {
-    console.log('[Celeste] message received', event.origin, event.data?.type);
     if (event.origin !== CELESTE_ORIGIN) return;
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type === 'CELESTE_OPEN_TREE' && data.partyId) {
-      console.log('[Celeste] opening tree for', data.partyId);
       openTreeDrawer(data.partyId);
     }
   });

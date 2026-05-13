@@ -1,6 +1,8 @@
 // Background service worker — makes cross-origin API calls on behalf of
 // content scripts, which are subject to CORS but service workers are not.
 
+console.log('[Celeste-bg] service worker started v0.3.5');
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== 'FETCH_CORPORATE_FAMILY') return false;
 

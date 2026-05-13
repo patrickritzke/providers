@@ -22,6 +22,7 @@ const CorporateTree = (() => {
   // ── API ────────────────────────────────────────────────────────────────────
   // Routed through the background service worker to avoid CORS restrictions.
   async function fetchCorporateFamily(query, token, appHost) {
+    console.log('[CorporateTree] sending to background', query, appHost);
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { type: 'FETCH_CORPORATE_FAMILY', partyId: query, token, appHost },

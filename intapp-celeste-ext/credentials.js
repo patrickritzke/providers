@@ -234,6 +234,9 @@ const CredentialsManager = (() => {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
           Test All
         </button>
+        <button class="creds-testall-btn" id="creds-check-storage" style="margin-left:6px;background:#475569;">
+          Check Storage
+        </button>
       </div>
       <div class="creds-testall-result" id="creds-testall-result"></div>
 
@@ -437,7 +440,7 @@ const CredentialsManager = (() => {
       if (!clientId)     { toast('intapp', 'Client ID is required', 'err'); return; }
       if (!clientSecret) { toast('intapp', 'Client Secret is required', 'err'); return; }
       await saveAndTest('intapp',
-        () => chrome.runtime.sendMessage({ type: 'SAVE_CREDENTIALS', data: { intapp_credentials: { appHost, tenantId, clientId, clientSecret, redirectUri } } }),
+        () => set({ intapp_credentials: { appHost, tenantId, clientId, clientSecret, redirectUri } }),
         async () => {
           const res = await chrome.runtime.sendMessage({ type: 'TEST_INTAPP', creds: { appHost, clientId, clientSecret, redirectUri, tenantId } });
           if (!res.ok) throw new Error(res.error);
@@ -641,13 +644,13 @@ const CredentialsManager = (() => {
       const formId     = document.getElementById('creds-intapp-client-id')?.value.trim();
       const formSecret = document.getElementById('creds-intapp-secret')?.value.trim();
       if (formHost && formId && formSecret) {
-        await chrome.runtime.sendMessage({ type: 'SAVE_CREDENTIALS', data: { intapp_credentials: {
+        await set({ intapp_credentials: {
           appHost:      formHost,
           tenantId:     document.getElementById('creds-intapp-tenant')?.value.trim() || '',
           clientId:     formId,
           clientSecret: formSecret,
           redirectUri:  document.getElementById('creds-intapp-redirect')?.value.trim() || '',
-        }}});
+        }});
       }
       const ic = (await get(['intapp_credentials'])).intapp_credentials || {};
       if (ic.appHost && ic.clientId && ic.clientSecret) {
@@ -721,6 +724,28 @@ const CredentialsManager = (() => {
       out.innerHTML = results.join('<br>');
       btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Test All';
       btn.disabled = false;
+    });
+
+    // ── Check Storage ────────────────────────────────────────────────────────
+    document.getElementById('creds-check-storage').addEventListener('click', async () => {
+      const out = document.getElementById('creds-testall-result');
+      out.className = 'creds-testall-result show';
+      const data = await get(['intapp_credentials', 'intapp_token']);
+      const ic = data.intapp_credentials;
+      const tok = data.intapp_token;
+      const lines = [];
+      if (ic) {
+        lines.push(`✅ intapp_credentials: host=${ic.appHost} id=${ic.clientId ? '✓' : '✗'} secret=${ic.clientSecret ? '✓' : '✗'}`);
+      } else {
+        lines.push('❌ intapp_credentials: not found in storage');
+      }
+      if (tok) {
+        const exp = tok.expiresAt ? new Date(tok.expiresAt).toLocaleTimeString() : '?';
+        lines.push(`✅ intapp_token: ${tok.accessToken ? 'present' : '✗'} — expires ${exp}`);
+      } else {
+        lines.push('❌ intapp_token: not found in storage');
+      }
+      out.innerHTML = lines.join('<br>');
     });
 
     // ── Copy All / Paste All ─────────────────────────────────────────────────

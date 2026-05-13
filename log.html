@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>API Log — 3rd Party Lookup Extension</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b0c10; --surface: #12141a; --surface2: #161820;
+      --border: #1f2230; --border2: #252838;
+      --accent: #00e5c0; --accent-dim: rgba(0,229,192,0.10);
+      --text: #e8eaf0; --muted: #5a607a; --muted2: #3d4260;
+      --danger: #ff4d6d; --warn: #f5a623; --ok: #00e5c0;
+      --mono: 'DM Mono', monospace; --sans: 'Syne', sans-serif;
+    }
+
+    html, body { height: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); display: flex; flex-direction: column; }
+
+    /* Top bar */
+    .topbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      background: var(--surface); flex-shrink: 0;
+    }
+    .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px rgba(0,229,192,0.4); flex-shrink: 0; }
+    .topbar h1 { font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
+    .topbar .sub { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .count-badge { background: var(--accent-dim); border: 1px solid rgba(0,229,192,0.25); color: var(--accent); font-family: var(--mono); font-size: 11px; padding: 3px 10px; border-radius: 20px; }
+    .btn-clear { background: transparent; border: 1px solid rgba(255,77,109,0.3); color: var(--danger); border-radius: 6px; padding: 6px 14px; font-family: var(--mono); font-size: 11px; cursor: pointer; transition: background 0.15s; }
+    .btn-clear:hover { background: rgba(255,77,109,0.1); }
+    .btn-refresh { background: var(--accent-dim); border: 1px solid rgba(0,229,192,0.3); color: var(--accent); border-radius: 6px; padding: 6px 14px; font-family: var(--mono); font-size: 11px; cursor: pointer; transition: background 0.15s; }
+    .btn-refresh:hover { background: rgba(0,229,192,0.2); }
+
+    /* Layout */
+    .layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* Log list */
+    .log-list { width: 340px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg); }
+    .log-list::-webkit-scrollbar { width: 4px; }
+    .log-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .log-entry {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background 0.12s;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .log-entry:hover { background: var(--surface); }
+    .log-entry.active { background: var(--surface2); border-left: 2px solid var(--accent); }
+
+    .entry-top { display: flex; align-items: center; gap: 8px; }
+    .entry-action { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .entry-action .action-name { color: var(--accent); }
+
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.ok { background: var(--ok); box-shadow: 0 0 5px rgba(0,229,192,0.5); }
+    .status-dot.err { background: var(--danger); box-shadow: 0 0 5px rgba(255,77,109,0.5); }
+    .status-dot.pending { background: var(--warn); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .entry-meta { display: flex; gap: 10px; align-items: center; }
+    .entry-time { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+    .entry-duration { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+    .entry-status { font-family: var(--mono); font-size: 10px; }
+    .entry-status.ok { color: var(--ok); }
+    .entry-status.err { color: var(--danger); }
+
+    .empty-list { padding: 40px 20px; text-align: center; color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 2; }
+
+    /* Detail panel */
+    .detail { flex: 1; overflow-y: auto; padding: 24px; background: var(--bg); }
+    .detail::-webkit-scrollbar { width: 4px; }
+    .detail::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-family: var(--mono); font-size: 13px; flex-direction: column; gap: 10px; }
+    .detail-empty .icon { font-size: 32px; opacity: 0.3; }
+
+    .detail-header { margin-bottom: 20px; }
+    .detail-title { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
+    .detail-title .action-name { color: var(--accent); }
+    .detail-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill { font-family: var(--mono); font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
+    .pill.ok { border-color: rgba(0,229,192,0.3); color: var(--ok); background: var(--accent-dim); }
+    .pill.err { border-color: rgba(255,77,109,0.3); color: var(--danger); background: rgba(255,77,109,0.08); }
+
+    .section { margin-bottom: 20px; }
+    .section-label {
+      font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--muted); font-family: var(--mono); margin-bottom: 8px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .copy-btn {
+      margin-left: auto; background: none; border: 1px solid var(--border2);
+      color: var(--muted); border-radius: 4px; padding: 2px 8px;
+      font-family: var(--mono); font-size: 10px; cursor: pointer;
+      transition: color 0.12s, border-color 0.12s;
+    }
+    .copy-btn:hover { color: var(--accent); border-color: rgba(0,229,192,0.4); }
+
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px; font-family: var(--mono);
+      font-size: 11px; line-height: 1.7; color: #b0b8d0;
+      overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+    }
+    pre::-webkit-scrollbar { height: 4px; }
+    pre::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    /* XML syntax highlight classes applied by JS */
+    .xml-tag { color: #7eb8f7; }
+    .xml-attr { color: #f7c57e; }
+    .xml-val  { color: #9fe5b8; }
+    .xml-text { color: #c8cfe0; }
+    .xml-comment { color: var(--muted); font-style: italic; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo-dot"></div>
+  <div>
+    <h1>API Log</h1>
+    <div class="sub">3rd Party Lookup Extension</div>
+  </div>
+  <div class="topbar-right">
+    <span class="count-badge" id="countBadge">0 entries</span>
+    <button class="btn-refresh" id="refreshBtn">↻ Refresh</button>
+    <button class="btn-clear" id="clearBtn">Clear All</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="log-list" id="logList">
+    <div class="empty-list">No API calls logged yet.<br>Run a search to see activity here.</div>
+  </div>
+  <div class="detail" id="detail">
+    <div class="detail-empty">
+      <div class="icon">📋</div>
+      <span>Select an entry to view details</span>
+    </div>
+  </div>
+</div>
+
+<script src="logger.js"></script>
+<script src="log.js"></script>
+</body>
+</html>

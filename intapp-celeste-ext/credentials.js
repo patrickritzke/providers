@@ -437,9 +437,9 @@ const CredentialsManager = (() => {
       if (!clientId)     { toast('intapp', 'Client ID is required', 'err'); return; }
       if (!clientSecret) { toast('intapp', 'Client Secret is required', 'err'); return; }
       await saveAndTest('intapp',
-        () => set({ intapp_credentials: { appHost, tenantId, clientId, clientSecret, redirectUri } }),
+        () => chrome.runtime.sendMessage({ type: 'SAVE_CREDENTIALS', data: { intapp_credentials: { appHost, tenantId, clientId, clientSecret, redirectUri } } }),
         async () => {
-          const res = await chrome.runtime.sendMessage({ type: 'TEST_INTAPP', creds: { appHost, clientId, clientSecret, redirectUri } });
+          const res = await chrome.runtime.sendMessage({ type: 'TEST_INTAPP', creds: { appHost, clientId, clientSecret, redirectUri, tenantId } });
           if (!res.ok) throw new Error(res.error);
           return res.detail;
         }
@@ -636,18 +636,18 @@ const CredentialsManager = (() => {
         catch (e) { results.push(`❌ ${label}: ${e.message}`); }
       };
 
-      // Intapp — save form fields first if filled, then test from storage
+      // Intapp — save form fields via SW first, then test
       const formHost   = document.getElementById('creds-intapp-host')?.value.trim().replace(/^https?:\/\//, '');
       const formId     = document.getElementById('creds-intapp-client-id')?.value.trim();
       const formSecret = document.getElementById('creds-intapp-secret')?.value.trim();
       if (formHost && formId && formSecret) {
-        await set({ intapp_credentials: {
+        await chrome.runtime.sendMessage({ type: 'SAVE_CREDENTIALS', data: { intapp_credentials: {
           appHost:      formHost,
           tenantId:     document.getElementById('creds-intapp-tenant')?.value.trim() || '',
           clientId:     formId,
           clientSecret: formSecret,
           redirectUri:  document.getElementById('creds-intapp-redirect')?.value.trim() || '',
-        }});
+        }}});
       }
       const ic = (await get(['intapp_credentials'])).intapp_credentials || {};
       if (ic.appHost && ic.clientId && ic.clientSecret) {

@@ -4,14 +4,34 @@ console.log('[Celeste-bg] service worker started v0.3.7');
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
+  // ── Save credentials (called by popup — routes through SW so storage is reliable) ──
+  if (msg.type === 'SAVE_CREDENTIALS') {
+    chrome.storage.local.set(msg.data, () => {
+      console.log('[Celeste-bg] credentials saved', Object.keys(msg.data));
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // ── Debug: dump storage ────────────────────────────────────────────────────
+  if (msg.type === 'GET_STORAGE') {
+    chrome.storage.local.get(null, (data) => {
+      console.log('[Celeste-bg] storage dump', data);
+      sendResponse({ ok: true, data });
+    });
+    return true;
+  }
+
   // ── Intapp OAuth2 token test (called by credentials popup) ──────────────
   if (msg.type === 'TEST_INTAPP') {
     const { appHost, clientId, clientSecret, redirectUri } = msg.creds;
+    // Save credentials first, then fetch token — both in SW context
+    chrome.storage.local.set({ intapp_credentials: { appHost, clientId, clientSecret, redirectUri: redirectUri || '', tenantId: msg.creds.tenantId || '' } });
     const url = `https://${appHost}/auth/oauth/token`;
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+      body: `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&redirect_uri=${encodeURIComponent(redirectUri || '')}`,
     })
       .then(res => res.json())
       .then(data => {

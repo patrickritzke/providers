@@ -20,23 +20,20 @@ const CorporateTree = (() => {
   }
 
   // ── API ────────────────────────────────────────────────────────────────────
-  // Fetched directly from the content script — same origin as the Intapp page,
-  // so the browser's existing session is used automatically (no OAuth needed).
+  // Routed through the background service worker (uses stored OAuth token).
   async function fetchCorporateFamily(query) {
     console.log('[CorporateTree] fetching party', query);
-    const url = `/api/api/common/v1/parties/${encodeURIComponent(query)}?properties=CorporateFamily`;
-    const res = await fetch(url, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'FETCH_CORPORATE_FAMILY', partyId: query },
+        (res) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(res);
+        }
+      );
     });
-
-    if (!res.ok) {
-      const text = await res.text();
-      const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
-      throw new Error(`API ${res.status}: ${plain}`);
-    }
-
-    const data = await res.json();
+    if (!response.ok) throw new Error(response.error);
+    const data = response.data;
     // Prefer BureauVanDijk tree; fall back to first available
     const tree = data.corporateTrees?.find(t => t.providerType === 'BureauVanDijk')
                ?? data.corporateTrees?.[0];

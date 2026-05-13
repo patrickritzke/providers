@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Celeste for Intapp Requests",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Celeste AI assistant drawer with corporate tree panel for Intapp request pages.",
 
   "icons": {

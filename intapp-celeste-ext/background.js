@@ -1,6 +1,6 @@
 // Background service worker — handles cross-origin API calls and credential tests.
 
-console.log('[Celeste-bg] service worker started v0.3.6');
+console.log('[Celeste-bg] service worker started v0.3.7');
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 

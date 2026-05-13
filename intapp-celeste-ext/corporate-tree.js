@@ -181,12 +181,13 @@ const CorporateTree = (() => {
 
   // ── State ──────────────────────────────────────────────────────────────────
   const state = {
-    selected:  new Set(),
-    collapsed: new Set(),
-    nodes:     [],
+    selected:    new Set(),
+    collapsed:   new Set(),
+    nodes:       [],
     onSelect:    null,
     actionLabel: 'Send to Celeste',
     actionIcon:  '💬',
+    _triggerLoad: null,  // set by mount() so loadParty() can fire it
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -321,6 +322,12 @@ const CorporateTree = (() => {
       }
     }
 
+    // Expose load trigger so loadParty() can fire it programmatically
+    state._triggerLoad = (partyId) => {
+      queryInput.value = partyId;
+      load();
+    };
+
     loadBtn.addEventListener('click', load);
     queryInput.addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 
@@ -342,7 +349,12 @@ const CorporateTree = (() => {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  return { mount };
+  // Programmatically load a party by ID (called by content.js on tree trigger)
+  function loadParty(partyId) {
+    if (state._triggerLoad) state._triggerLoad(partyId);
+  }
+
+  return { mount, loadParty };
 
 })();
 

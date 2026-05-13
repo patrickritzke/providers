@@ -1,0 +1,308 @@
+/* ==========================================================================
+   Celeste Drawer — injected styles
+   All selectors are prefixed with .celeste- to avoid clashing with the host
+   Intapp page styles.
+   ========================================================================== */
+
+/* ----- design tokens ---------------------------------------------------- */
+.celeste-root {
+  --c-bg:        #ffffff;
+  --c-fg:        #292221;
+  --c-muted:     #6b7280;
+  --c-muted-2:   #9ca3af;
+  --c-border:    #e5e7eb;
+  --c-border-2:  #d8d8df;
+  --c-card:      #ffffff;
+  --c-card-hover:#f8fafc;
+  --c-primary:   #0e54a9;
+  --c-primary-fg:#ffffff;
+  --c-input-bg:  #ffffff;
+  --c-input-bd:  #e2e8f0;
+  --c-link:      #0e54a9;
+  --c-shadow:    0 1px 2px rgba(0,0,0,.05);
+  --c-shadow-lg: -8px 0 24px rgba(15, 23, 42, .08);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  color: var(--c-fg);
+  box-sizing: border-box;
+}
+.celeste-root *, .celeste-root *::before, .celeste-root *::after {
+  box-sizing: border-box;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap');
+
+/* ----- trigger button --------------------------------------------------- */
+#celeste-trigger-btn.celeste-trigger,
+.celeste-trigger {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  gap: 8px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  width: auto !important;
+  padding: 4px 16px !important;
+  margin: 4px 8px !important;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: normal !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  color: rgb(230, 225, 220) !important;
+  background: rgb(32, 114, 126) !important;
+  background-color: rgb(32, 114, 126) !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  position: relative !important;
+  z-index: 10 !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  transition: background-color .12s ease, transform .12s ease;
+}
+#celeste-trigger-btn.celeste-trigger:hover,
+.celeste-trigger:hover  { background-color: rgb(26, 96, 106) !important; }
+#celeste-trigger-btn.celeste-trigger:active,
+.celeste-trigger:active { transform: translateY(1px); }
+#celeste-trigger-btn.celeste-trigger svg,
+.celeste-trigger svg {
+  width: 14px !important; height: 14px !important;
+  flex-shrink: 0 !important; display: inline-block !important;
+  fill: none !important; stroke: currentColor !important;
+}
+#celeste-trigger-btn.celeste-trigger span,
+.celeste-trigger span {
+  display: inline-block !important;
+  color: rgb(230, 225, 220) !important;
+  font: inherit !important; line-height: 1 !important;
+}
+
+/* ----- stage button ----------------------------------------------------- */
+#celeste-stage-btn.celeste-stage-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  padding: 0 8px !important;
+  margin: 0 0 0 8px !important;
+  vertical-align: middle !important;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  color: rgb(230, 225, 220) !important;
+  background: rgb(32, 114, 126) !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  position: relative !important;
+  z-index: 5 !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 1px 2px rgba(32, 114, 126, .25) !important;
+  transition: background-color .12s ease, transform .12s ease, box-shadow .12s ease;
+}
+#celeste-stage-btn.celeste-stage-btn:hover {
+  background-color: rgb(26, 96, 106) !important;
+  box-shadow: 0 2px 6px rgba(32, 114, 126, .35) !important;
+}
+#celeste-stage-btn.celeste-stage-btn:active { transform: translateY(1px); }
+#celeste-stage-btn.celeste-stage-btn .celeste-stage-btn-letter {
+  display: inline-block !important;
+  font-weight: 700 !important; font-size: 12px !important;
+  color: rgb(230, 225, 220) !important; line-height: 1 !important;
+}
+#celeste-stage-btn.celeste-stage-btn svg {
+  width: 11px !important; height: 11px !important;
+  flex-shrink: 0 !important; display: inline-block !important;
+  fill: none !important; stroke: currentColor !important;
+}
+
+/* ----- backdrop --------------------------------------------------------- */
+.celeste-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, .25);
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s ease;
+  z-index: 2147483646;
+}
+.celeste-root.celeste-open .celeste-backdrop {
+  opacity: 1; pointer-events: auto;
+}
+
+/* ----- drawers wrapper — flex row, slides in as one unit --------------- */
+.celeste-drawers {
+  position: fixed;
+  top: 0; bottom: 0; right: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  transform: translateX(100%);
+  transition: transform .25s cubic-bezier(.2,.8,.2,1);
+  z-index: 2147483647;
+  pointer-events: none;
+}
+.celeste-root.celeste-open .celeste-drawers {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* ----- tree drawer (left of Celeste) ------------------------------------ */
+.celeste-tree-drawer {
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--c-bg);
+  border-right: 1px solid var(--c-border);
+  transition: width .25s cubic-bezier(.2,.8,.2,1);
+  position: relative;
+}
+.celeste-root.celeste-tree-open .celeste-tree-drawer {
+  width: 400px;
+}
+
+.celeste-tree-inner {
+  width: 400px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+#celeste-tree-root {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Tree close button — top-right corner of the tree panel */
+.celeste-tree-close {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .9);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  color: #4b5563;
+  cursor: pointer;
+  z-index: 3;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, .08);
+  transition: background .12s ease, color .12s ease;
+  backdrop-filter: blur(4px);
+}
+.celeste-tree-close:hover { background: #fff; color: #111827; }
+.celeste-tree-close svg   { width: 14px; height: 14px; }
+
+/* ----- celeste drawer (right) ------------------------------------------ */
+.celeste-drawer {
+  width: 440px;
+  flex-shrink: 0;
+  height: 100%;
+  background: var(--c-bg);
+  border-left: 1px solid var(--c-border);
+  box-shadow: var(--c-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.celeste-drawer.celeste-drawer--iframe {
+  width: 520px;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* When SDK canvas opens, widen Celeste */
+.celeste-root.celeste-canvas-open .celeste-drawer.celeste-drawer--iframe {
+  width: 50vw;
+  min-width: 720px;
+}
+
+/* Panel container for SDK-injected iframe */
+.celeste-panel-container {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  background: var(--c-bg);
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.celeste-drawer.celeste-iframe-loaded .celeste-panel-container { opacity: 1; }
+.celeste-panel-container iframe {
+  width: 100% !important; height: 100% !important;
+  border: 0 !important; display: block !important;
+}
+
+/* Celeste iframe */
+.celeste-iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  border: 0;
+  background: var(--c-bg);
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.celeste-drawer.celeste-iframe-loaded .celeste-iframe { opacity: 1; }
+
+/* Celeste floating close button */
+.celeste-iframe-close {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .9);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  color: #4b5563;
+  cursor: pointer;
+  z-index: 3;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, .08);
+  transition: background .12s ease, color .12s ease;
+  backdrop-filter: blur(4px);
+}
+.celeste-iframe-close:hover { background: #fff; color: #111827; }
+.celeste-iframe-close svg   { width: 14px; height: 14px; }
+
+/* Loading spinner */
+.celeste-iframe-loader {
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--c-bg);
+  z-index: 2;
+  opacity: 1;
+  transition: opacity .25s ease;
+  pointer-events: none;
+}
+.celeste-drawer.celeste-iframe-loaded .celeste-iframe-loader { opacity: 0; }
+.celeste-spinner {
+  width: 28px; height: 28px;
+  border: 3px solid var(--c-border);
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  animation: celeste-spin .8s linear infinite;
+}
+@keyframes celeste-spin { to { transform: rotate(360deg); } }
+
+/* ----- sr utility ------------------------------------------------------- */
+.celeste-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}

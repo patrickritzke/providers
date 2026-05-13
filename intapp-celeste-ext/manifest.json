@@ -1,25 +1,32 @@
 {
   "manifest_version": 3,
-  "name": "intapp-celeste-ext",
-  "version": "0.1.0",
-  "description": "Corporate tree viewer and entity selector for Intapp / Celeste",
-
-  "permissions": [
-    "storage"
-  ],
-
-  "host_permissions": [
-    "https://*/*"
-  ],
-
-  "action": {
-    "default_popup": "corporate-tree.html",
-    "default_title": "Corporate Tree"
-  },
+  "name": "Celeste for Intapp Requests",
+  "version": "0.3.0",
+  "description": "Celeste AI assistant drawer with corporate tree panel for Intapp request pages.",
 
   "icons": {
-    "16":  "icon16.png",
-    "48":  "icon48.png",
+    "16": "icon16.png",
+    "48": "icon48.png",
     "128": "icon128.png"
-  }
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://shalaka2-sand.opensandbox2.intapp.com/*"
+      ],
+      "js": ["corporate-tree.js", "content.js"],
+      "css": ["drawer.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://shalaka2-sand.my.intapp.com/celeste/*"
+      ],
+      "js": ["celeste-receiver.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
 }

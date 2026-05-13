@@ -270,6 +270,13 @@ const CredentialsManager = (() => {
           <button class="creds-btn creds-btn-primary" id="creds-intapp-save">Save &amp; Test</button>
         </div>
         <div class="creds-toast" id="toast-intapp"></div>
+        <div class="creds-field" style="margin-top:8px">
+          <label class="creds-label" for="creds-intapp-token-override">Bearer Token (override)</label>
+          ${secretField('creds-intapp-token-override', 'Paste token directly (from credentials extension or Swagger)', 'Bypasses OAuth — paste a working token here')}
+        </div>
+        <div class="creds-btn-row">
+          <button class="creds-btn creds-btn-primary" id="creds-intapp-token-save">Save Token</button>
+        </div>
       `)}
 
       <!-- ── D&B Direct+ ────────────────────────────────────────────── -->
@@ -371,7 +378,7 @@ const CredentialsManager = (() => {
   // ── Load saved values into fields ────────────────────────────────────────────
   async function loadFields() {
     const s = await get([
-      'intapp_credentials', 'dnb_basic_token', 'geoapify_api_key',
+      'intapp_credentials', 'intapp_token', 'dnb_basic_token', 'geoapify_api_key',
       'moodys_username', 'moodys_password',
       'sp_username', 'sp_password',
       'spx_username', 'spx_password', 'spx_token'
@@ -380,6 +387,7 @@ const CredentialsManager = (() => {
     const v = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
 
     const ic = s.intapp_credentials || {};
+    if (s.intapp_token?.accessToken) v('creds-intapp-token-override', s.intapp_token.accessToken);
     v('creds-intapp-host',      ic.appHost);
     v('creds-intapp-tenant',    ic.tenantId);
     v('creds-intapp-client-id', ic.clientId);
@@ -451,6 +459,13 @@ const CredentialsManager = (() => {
         }
       );
     });
+    document.getElementById('creds-intapp-token-save').addEventListener('click', async () => {
+      const token = document.getElementById('creds-intapp-token-override').value.trim();
+      if (!token) { toast('intapp', 'Token required', 'err'); return; }
+      await set({ intapp_token: { accessToken: token, expiresAt: Date.now() + 8 * 3600 * 1000 } });
+      toast('intapp', '✓ Token saved', 'ok');
+    });
+
     document.getElementById('creds-intapp-clear').addEventListener('click', async () => {
       if (!confirm('Clear Intapp credentials?')) return;
       await remove(['intapp_credentials', 'intapp_token']);

@@ -24,7 +24,7 @@ const CorporateTree = (() => {
   // so the browser's existing session is used automatically (no OAuth needed).
   async function fetchCorporateFamily(query) {
     console.log('[CorporateTree] fetching party', query);
-    const url = `/api/common/v1/parties/${encodeURIComponent(query)}?properties=CorporateFamily`;
+    const url = `/api/api/common/v1/parties/${encodeURIComponent(query)}?properties=CorporateFamily`;
     const res = await fetch(url, {
       credentials: 'include',
       headers: { Accept: 'application/json' },

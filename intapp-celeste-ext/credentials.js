@@ -774,14 +774,19 @@ const CredentialsManager = (() => {
       out.className = 'creds-testall-result show';
       const partyId = prompt('Party ID to test:', '1764');
       if (!partyId) return;
-      out.textContent = 'Testing party API via page session…';
+      out.textContent = 'Testing party API…';
       try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab) { out.textContent = '❌ No active tab found — open the Intapp page first'; return; }
-        const res = await chrome.tabs.sendMessage(tab.id, { type: 'TEST_PARTY_API', partyId });
-        out.textContent = res.ok ? `✅ ${res.summary}` : `❌ ${res.error}`;
+        const res = await chrome.runtime.sendMessage({ type: 'FETCH_CORPORATE_FAMILY', partyId });
+        if (res.ok) {
+          const trees = res.data?.corporateTrees;
+          out.textContent = trees
+            ? `✅ ${trees.length} tree(s): ${trees.map(t => `${t.name} (${t.providerType})`).join(', ')}`
+            : `✅ OK but no corporateTrees. Keys: ${Object.keys(res.data).join(', ')}`;
+        } else {
+          out.textContent = `❌ ${res.error}`;
+        }
       } catch (e) {
-        out.textContent = `❌ ${e.message} — make sure the Intapp page is open and active`;
+        out.textContent = `❌ ${e.message}`;
       }
     });
 

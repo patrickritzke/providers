@@ -8,16 +8,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'SAVE_CREDENTIALS') {
     chrome.storage.local.set(msg.data, () => {
       console.log('[Celeste-bg] credentials saved', Object.keys(msg.data));
-      sendResponse({ ok: true });
-    });
-    return true;
-  }
-
-  // ── Debug: dump storage ────────────────────────────────────────────────────
-  if (msg.type === 'GET_STORAGE') {
-    chrome.storage.local.get(null, (data) => {
-      console.log('[Celeste-bg] storage dump', data);
-      sendResponse({ ok: true, data });
+      try { sendResponse({ ok: true }); } catch (_) {}
     });
     return true;
   }

@@ -20,16 +20,21 @@ const CorporateTree = (() => {
   }
 
   // ── API ────────────────────────────────────────────────────────────────────
-  // GET /parties/{partyId}?properties=CorporateFamily
-  // Response: { corporateTrees: [{ providerType, rootCompany: { externalId, name, countryCode, partyId, children[] } }] }
+  // Routed through the background service worker to avoid CORS restrictions.
   async function fetchCorporateFamily(query, token, appHost) {
-    const url = `https://${appHost}/api/party/v1/parties/${encodeURIComponent(query)}?properties=CorporateFamily`;
-    const res = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'FETCH_CORPORATE_FAMILY', partyId: query, token, appHost },
+        (res) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(res);
+        }
+      );
     });
-    if (!res.ok) throw new Error(`Intapp API ${res.status}: ${await res.text().then(t => t.slice(0, 120))}`);
-    const data = await res.json();
 
+    if (!response.ok) throw new Error(response.error);
+
+    const data = response.data;
     // Prefer BureauVanDijk tree; fall back to first available
     const tree = data.corporateTrees?.find(t => t.providerType === 'BureauVanDijk')
                ?? data.corporateTrees?.[0];

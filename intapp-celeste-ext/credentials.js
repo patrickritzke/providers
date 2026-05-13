@@ -744,7 +744,9 @@ const CredentialsManager = (() => {
       }
       if (tok) {
         const exp = tok.expiresAt ? new Date(tok.expiresAt).toLocaleTimeString() : '?';
-        lines.push(`✅ intapp_token: ${tok.accessToken ? 'present' : '✗'} — expires ${exp}`);
+        const t = tok.accessToken || tok.token || '';
+        const preview = t ? `${t.slice(0, 20)}…${t.slice(-8)}` : '✗';
+        lines.push(`✅ intapp_token: ${preview} — expires ${exp}`);
       } else {
         lines.push('❌ intapp_token: not found in storage');
       }

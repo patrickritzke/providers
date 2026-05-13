@@ -237,6 +237,9 @@ const CredentialsManager = (() => {
         <button class="creds-testall-btn" id="creds-check-storage" style="margin-left:6px;background:#475569;">
           Check Storage
         </button>
+        <button class="creds-testall-btn" id="creds-test-api" style="margin-left:6px;background:#0f766e;">
+          Test API
+        </button>
       </div>
       <div class="creds-testall-result" id="creds-testall-result"></div>
 
@@ -746,6 +749,24 @@ const CredentialsManager = (() => {
         lines.push('❌ intapp_token: not found in storage');
       }
       out.innerHTML = lines.join('<br>');
+    });
+
+    // ── Test API ─────────────────────────────────────────────────────────────
+    document.getElementById('creds-test-api').addEventListener('click', async () => {
+      const out = document.getElementById('creds-testall-result');
+      out.className = 'creds-testall-result show';
+      out.textContent = 'Testing party API…';
+      const partyId = prompt('Party ID to test:', '1764');
+      if (!partyId) return;
+      const res = await chrome.runtime.sendMessage({ type: 'FETCH_CORPORATE_FAMILY', partyId, appHost: (await get(['intapp_credentials'])).intapp_credentials?.appHost });
+      if (res.ok) {
+        const trees = res.data?.corporateTrees;
+        out.textContent = trees
+          ? `✅ Got ${trees.length} tree(s): ${trees.map(t => t.providerType).join(', ')}`
+          : `✅ Response OK but no corporateTrees key. Keys: ${Object.keys(res.data).join(', ')}`;
+      } else {
+        out.textContent = `❌ ${res.error}`;
+      }
     });
 
     // ── Copy All / Paste All ─────────────────────────────────────────────────

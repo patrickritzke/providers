@@ -185,6 +185,7 @@ const CorporateTree = (() => {
     collapsed:   new Set(),
     nodes:       [],
     onSelect:    null,
+    onLoad:      null,  // called with nodes[] after a successful tree load
     actionLabel: 'Send to Celeste',
     actionIcon:  '💬',
     _triggerLoad: null,  // set by mount() so loadParty() can fire it
@@ -254,6 +255,7 @@ const CorporateTree = (() => {
     if (!root) { console.error('[CorporateTree] mount target not found:', selector); return; }
 
     state.onSelect    = opts.onSelect    || null;
+    state.onLoad      = opts.onLoad      || null;
     state.actionLabel = opts.actionLabel || 'Send to Celeste';
     state.actionIcon  = opts.actionIcon  || '💬';
     state.selected.clear();
@@ -313,6 +315,7 @@ const CorporateTree = (() => {
 
         statusEl.textContent = `${state.nodes.length} entities — ${query}`;
         renderTree(treeEl, buildTree(state.nodes));
+        if (state.onLoad) state.onLoad(state.nodes);
       } catch (err) {
         statusEl.textContent = `⚠ ${err.message}`;
         statusEl.className = 'ct-status err';

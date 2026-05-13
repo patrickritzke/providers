@@ -138,6 +138,10 @@
     if (window.CorporateTree && !treeMounted) {
       treeMounted = true;
       CorporateTree.mount('#celeste-tree-root', {
+        onLoad: () => {
+          // Only open the tree drawer once data has come back successfully
+          if (drawerRoot) requestAnimationFrame(() => drawerRoot.classList.add('celeste-tree-open'));
+        },
         onSelect: ({ entities }) => {
           // Forward selected entities to Celeste as a chat message
           const frame = drawerRoot && drawerRoot.querySelector('.celeste-iframe');
@@ -209,17 +213,14 @@
 
   // ── Tree drawer open/close ────────────────────────────────────────────────
   function openTreeDrawer(partyId) {
-    // Make sure Celeste is open first (tree rides alongside it)
+    // Ensure drawer is built and Celeste is open — tree drawer itself stays
+    // hidden until onLoad fires (i.e. data comes back successfully)
     if (!drawerRoot || !drawerRoot.classList.contains('celeste-open')) {
       openDrawer();
     } else {
       ensureDrawer();
     }
-    requestAnimationFrame(() => {
-      if (drawerRoot) drawerRoot.classList.add('celeste-tree-open');
-    });
     if (partyId && window.CorporateTree) {
-      // Small delay so the drawer has opened and the component is visible
       setTimeout(() => CorporateTree.loadParty(partyId), 150);
     }
   }

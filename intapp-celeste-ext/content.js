@@ -13,6 +13,8 @@
   if (window.__celesteInjected) return;
   window.__celesteInjected = true;
 
+  console.log('[Celeste] content script v0.3.5 loaded');
+
   /* ---------------- stage-aware nudge config ---------------- */
   const STAGE_PROMPTS = {
     'Client': null,

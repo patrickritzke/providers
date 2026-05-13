@@ -20,22 +20,23 @@ const CorporateTree = (() => {
   }
 
   // ── API ────────────────────────────────────────────────────────────────────
-  // Routed through the background service worker to avoid CORS restrictions.
-  async function fetchCorporateFamily(query, token, appHost) {
-    console.log('[CorporateTree] sending to background', query, appHost);
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        { type: 'FETCH_CORPORATE_FAMILY', partyId: query, token, appHost },
-        (res) => {
-          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-          else resolve(res);
-        }
-      );
+  // Fetched directly from the content script — same origin as the Intapp page,
+  // so the browser's existing session is used automatically (no OAuth needed).
+  async function fetchCorporateFamily(query) {
+    console.log('[CorporateTree] fetching party', query);
+    const url = `/api/common/v1/parties/${encodeURIComponent(query)}?properties=CorporateFamily`;
+    const res = await fetch(url, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
     });
 
-    if (!response.ok) throw new Error(response.error);
+    if (!res.ok) {
+      const text = await res.text();
+      const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+      throw new Error(`API ${res.status}: ${plain}`);
+    }
 
-    const data = response.data;
+    const data = await res.json();
     // Prefer BureauVanDijk tree; fall back to first available
     const tree = data.corporateTrees?.find(t => t.providerType === 'BureauVanDijk')
                ?? data.corporateTrees?.[0];
@@ -54,7 +55,7 @@ const CorporateTree = (() => {
       countryCode: node.countryCode || '',
       partyId:     node.partyId     || '',
     });
-    (node.children || []).forEach(child => flattenTree(child, id, result));
+    (node.subCompanies || node.children || []).forEach(child => flattenTree(child, id, result));
     return result;
   }
 
@@ -310,14 +311,7 @@ const CorporateTree = (() => {
       updateSelBar();
 
       try {
-        const { intapp_token, intapp_credentials } = await storageGet(['intapp_token', 'intapp_credentials']);
-        const token   = intapp_token?.accessToken || intapp_token?.token;
-        const appHost = intapp_credentials?.appHost;
-        console.log('[CorporateTree] storage check — token:', token ? token.slice(0,20)+'...' : 'MISSING', '| appHost:', appHost || 'MISSING');
-        if (!token)   throw new Error('No Intapp token — open the credentials extension and save & test Intapp first.');
-        if (!appHost) throw new Error('No Intapp app host configured in credentials.');
-
-        state.nodes = await fetchCorporateFamily(query, token, appHost);
+        state.nodes = await fetchCorporateFamily(query);
         if (!state.nodes.length) { statusEl.textContent = 'No results found.'; return; }
 
         statusEl.textContent = `${state.nodes.length} entities — ${query}`;

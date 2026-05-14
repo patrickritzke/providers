@@ -45,7 +45,7 @@
 
   /* ---------------- URLs ---------------- */
   const CELESTE_ORIGIN = 'https://shalaka2-sand.my.intapp.com';
-  const CELESTE_URL    = `${CELESTE_ORIGIN}/celeste/sdk/chat?parentOrigin=${encodeURIComponent(window.location.origin)}`;
+  const CELESTE_URL    = `${CELESTE_ORIGIN}/celeste/app`;
 
   /* ---------------- iframe reference (set once the drawer is built) -------- */
   let celesteFrame = null;

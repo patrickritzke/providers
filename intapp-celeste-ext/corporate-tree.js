@@ -109,6 +109,7 @@ const CorporateTree = (() => {
       .ct-tree-meta-role {
         font-weight: 600; color: #6366f1;
       }
+      .ct-tree-meta-owner { color: #475569; font-weight: 500; }
       .ct-tree-meta-sep { color: #cbd5e1; }
       .ct-tree-meta-provider { color: #94a3b8; }
 
@@ -734,21 +735,28 @@ const CorporateTree = (() => {
           btn.addEventListener('click', () => switchTab(btn.dataset.tab, treeEl, tabsEl, filterBarEl));
         });
 
-        // Header: "Party Name (ID)"
-        const partyNode = state.nodes.find(n => n.partyId === partyId || n.id === partyId);
-        const partyName = partyNode?.name || partyId;
-        partyNameEl.textContent = `${partyName} (${partyId})`;
+        // Header: use the top-level party data from the raw API response
+        const rawParty   = state.raw;
+        const partyName  = rawParty.name  || partyId;
+        const partyDispId = rawParty.partyId || rawParty.externalId || partyId;
+        partyNameEl.textContent = `${partyName} (${partyDispId})`;
         partyNameEl.className = 'ct-party-name';
 
-        // Sub-header: role + provider per tree
+        // Sub-header: role per tree — "Ultimate Owner" or "Subsidiary of Root Name (ID)"
+        const thisId = String(rawParty.partyId || rawParty.externalId || partyId);
         treeMetaEl.innerHTML = (state.raw.corporateTrees || []).map(tree => {
-          const rootId = tree.rootCompany?.externalId || tree.rootCompany?.partyId;
-          const role = (rootId === String(partyId))
-            ? 'Ultimate Owner'
-            : 'Subsidiary of Ultimate Owner';
+          const root   = tree.rootCompany;
+          const rootId = String(root?.externalId || root?.partyId || '');
           const provider = tree.providerType || tree.name || '';
+          let roleHtml;
+          if (rootId === thisId) {
+            roleHtml = `<span class="ct-tree-meta-role">Ultimate Owner</span>`;
+          } else {
+            const rootName = root?.name || rootId;
+            roleHtml = `<span class="ct-tree-meta-role">Subsidiary of</span> <span class="ct-tree-meta-owner">${esc(rootName)} (${esc(rootId)})</span>`;
+          }
           return `<div class="ct-tree-meta-row">
-            <span class="ct-tree-meta-role">${esc(role)}</span>
+            ${roleHtml}
             ${provider ? `<span class="ct-tree-meta-sep">·</span><span class="ct-tree-meta-provider">${esc(provider)}</span>` : ''}
           </div>`;
         }).join('');

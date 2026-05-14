@@ -122,14 +122,15 @@
   // Watches Celeste chat output for trigger patterns and tells the parent
   // to open the corporate tree panel with that party pre-loaded.
   //
-  // Supported formats (configure whichever in your Celeste system prompt):
-  //   [open-tree: US123456]          ← recommended canonical form
-  //   [tree: US123456]
-  //   open_tree: US123456
-  //   tree-US123456                  ← legacy
+  // Primary (natural language — configure in Celeste system prompt):
+  //   "Let's take a look at the full corporate structure for Party Name (ID)"
+  //   Small variations in wording are fine; what's matched is:
+  //     corporate (structure|tree|family) for <Name> (<ID>)
   //
-  // The regex captures the party ID from any of these.
-  const TREE_RE = /\[open-tree:\s*([A-Za-z0-9_-]+)\]|\[tree:\s*([A-Za-z0-9_-]+)\]|open[_-]tree:\s*([A-Za-z0-9_-]+)|\btree-([A-Za-z0-9_-]+)\b/i;
+  // Manual / fallback formats:
+  //   [open-tree: ID]   [tree: ID]   open_tree: ID   tree-ID
+  //
+  const TREE_RE = /corporate\s+(?:structure|tree|family)\s+for\s+.{1,80}?\(([A-Za-z0-9_-]+)\)|\[open-tree:\s*([A-Za-z0-9_-]+)\]|\[tree:\s*([A-Za-z0-9_-]+)\]|open[_-]tree:\s*([A-Za-z0-9_-]+)|\btree-([A-Za-z0-9_-]+)\b/i;
   let lastPartyId = null;
   let lastPartyTime = 0;
 
@@ -138,7 +139,7 @@
     const match = TREE_RE.exec(text);
     if (!match) return;
     // Pick whichever capture group matched
-    const partyId = match[1] || match[2] || match[3] || match[4];
+    const partyId = match[1] || match[2] || match[3] || match[4] || match[5];
     const now = Date.now();
     // Debounce: same party ID within 3 s is treated as one trigger
     if (partyId === lastPartyId && now - lastPartyTime < 3000) return;

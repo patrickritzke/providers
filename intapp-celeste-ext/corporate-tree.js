@@ -620,11 +620,11 @@ const CorporateTree = (() => {
       clearFilter(treeEl, filterBarEl);
     });
 
-    async function load(partyId) {
+    async function load(partyId, rawData) {
       if (!partyId) return;
 
       partyIdEl.textContent = partyId;
-      statusEl.textContent = 'Fetching corporate family…';
+      statusEl.textContent = 'Loading…';
       statusEl.className = 'ct-status';
       treeEl.innerHTML = '';
       tabsEl.innerHTML = '';
@@ -637,7 +637,14 @@ const CorporateTree = (() => {
       updateSelBar();
 
       try {
-        const result = await fetchCorporateFamily(partyId);
+        let result;
+        if (rawData) {
+          const trees = rawData.corporateTrees?.filter(t => t.rootCompany);
+          if (!trees?.length) { statusEl.textContent = 'No corporate tree in response.'; return; }
+          result = { nodes: trees.flatMap(t => flattenTree(t.rootCompany, null)), raw: rawData };
+        } else {
+          result = await fetchCorporateFamily(partyId);
+        }
         state.nodes = result.nodes;
         state.raw   = result.raw;
         if (!state.nodes.length) { statusEl.textContent = 'No results found.'; return; }
@@ -660,7 +667,7 @@ const CorporateTree = (() => {
       }
     }
 
-    state._triggerLoad = (partyId) => load(partyId);
+    state._triggerLoad = (partyId, rawData) => load(partyId, rawData);
 
     actionBtn.addEventListener('click', () => {
       if (!state.onSelect) return;
@@ -683,8 +690,8 @@ const CorporateTree = (() => {
   }
 
   // Programmatically load a party by ID (called by content.js on tree trigger)
-  function loadParty(partyId) {
-    if (state._triggerLoad) state._triggerLoad(partyId);
+  function loadParty(partyId, rawData) {
+    if (state._triggerLoad) state._triggerLoad(partyId, rawData);
   }
 
   return { mount, loadParty };

@@ -209,16 +209,15 @@
   }
 
   // ── Tree drawer open/close ────────────────────────────────────────────────
-  function openTreeDrawer(partyId) {
+  function openTreeDrawer(partyId, rawData) {
     if (!drawerRoot || !drawerRoot.classList.contains('celeste-open')) {
       openDrawer();
     } else {
       ensureDrawer();
     }
-    // Open tree drawer immediately so loading state and errors are visible
     if (drawerRoot) requestAnimationFrame(() => drawerRoot.classList.add('celeste-tree-open'));
     if (partyId && window.CorporateTree) {
-      setTimeout(() => window.CorporateTree.loadParty(partyId), 150);
+      setTimeout(() => window.CorporateTree.loadParty(partyId, rawData), 150);
     }
   }
 
@@ -226,13 +225,17 @@
     if (drawerRoot) drawerRoot.classList.remove('celeste-tree-open');
   }
 
-  // Listen for tree trigger messages from the Celeste iframe receiver
+  // Listen for tree trigger messages from the Celeste iframe receiver.
+  // Pre-fetch the corporate tree before opening — drawer only appears on success.
   window.addEventListener('message', (event) => {
     if (event.origin !== CELESTE_ORIGIN) return;
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type === 'CELESTE_OPEN_TREE' && data.partyId) {
-      openTreeDrawer(data.partyId);
+      chrome.runtime.sendMessage({ type: 'FETCH_CORPORATE_FAMILY', partyId: data.partyId }, (res) => {
+        if (!res || !res.ok) return; // silently ignore — no tree, no drawer
+        openTreeDrawer(data.partyId, res.data);
+      });
     }
   });
 

@@ -130,7 +130,8 @@
   // Manual / fallback formats:
   //   [open-tree: ID]   [tree: ID]   open_tree: ID   tree-ID
   //
-  const TREE_RE = /corporate\s+(?:structure|tree|family)\s+for\s+.{1,80}?\(([A-Za-z0-9_-]+)\)|\[open-tree:\s*([A-Za-z0-9_-]+)\]|\[tree:\s*([A-Za-z0-9_-]+)\]|open[_-]tree:\s*([A-Za-z0-9_-]+)|\btree-([A-Za-z0-9_-]+)\b/i;
+  // Greedy .+ ensures we match the LAST (ID) on the line, not the first.
+  const TREE_RE = /corporate\s+(?:structure|tree|family)\s+for\s+.+\(([A-Za-z0-9_-]+)\)|\[open-tree:\s*([A-Za-z0-9_-]+)\]|\[tree:\s*([A-Za-z0-9_-]+)\]|open[_-]tree:\s*([A-Za-z0-9_-]+)|\btree-([A-Za-z0-9_-]+)\b/i;
   let lastPartyId = null;
   let lastPartyTime = 0;
 

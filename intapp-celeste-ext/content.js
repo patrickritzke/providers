@@ -120,7 +120,14 @@
     return root;
   }
 
-  /* ---------------- request context from URL ---------------- */
+  /* ---------------- Celeste SDK context helpers ---------------- */
+  function setCelesteContext(title, context) {
+    if (window.CelesteSDK?.setContext) {
+      window.CelesteSDK.setContext({ title, context });
+      return true;
+    }
+    return false;
+  }
   function readRequestContext() {
     try { return `URL: ${window.location.href}`; } catch (_) { return null; }
   }
@@ -140,15 +147,20 @@
       window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {},
         onSelect: ({ entities }) => {
-          // Forward selected entities to Celeste as a chat message
-          const frame = drawerRoot && drawerRoot.querySelector('.celeste-iframe');
-          if (!frame || !frame.contentWindow) return;
-          const names = entities.map(e => e.name).join(', ');
-          const text = `Selected corporate entities: ${names}\n${entities.map(e => `- ${e.name} (${e.id}, ${e.countryCode})`).join('\n')}`;
-          try {
-            frame.contentWindow.postMessage({ type: 'CELESTE_PASTE_AND_SEND', text }, CELESTE_ORIGIN);
-          } catch (e) {
-            console.warn('[Celeste] tree entity postMessage failed', e);
+          const lines = entities.map(e => `- ${e.name} (${e.id}${e.countryCode ? ', ' + e.countryCode : ''})`).join('\n');
+          const title = `Corporate entities (${entities.length})`;
+          // Prefer SDK context injection; fall back to chat message
+          if (!setCelesteContext(title, lines)) {
+            const frame = drawerRoot && drawerRoot.querySelector('.celeste-iframe');
+            if (!frame || !frame.contentWindow) return;
+            try {
+              frame.contentWindow.postMessage(
+                { type: 'CELESTE_PASTE_AND_SEND', text: `${title}:\n${lines}` },
+                CELESTE_ORIGIN
+              );
+            } catch (e) {
+              console.warn('[Celeste] tree entity postMessage failed', e);
+            }
           }
         },
         actionLabel: 'Send to Celeste',
@@ -238,6 +250,15 @@
     if (event.origin !== CELESTE_ORIGIN) return;
     const data = event.data;
     if (!data || typeof data !== 'object') return;
+
+    // Celeste SDK asks for context when chat opens or needs a refresh
+    if ((data.source === 'CelesteSDK' || data.source === 'CelesteSDK_IFRAME') &&
+        data.type === 'CELESTE_SDK_REQUEST_CONTEXT') {
+      const ctx = readRequestContext();
+      if (ctx) setCelesteContext('Current request', ctx);
+      return;
+    }
+
     if (data.type === 'CELESTE_OPEN_TREE' && data.partyId) {
       chrome.runtime.sendMessage({ type: 'FETCH_CORPORATE_FAMILY', partyId: data.partyId }, (res) => {
         if (!res || !res.ok) return; // silently ignore — no tree, no drawer

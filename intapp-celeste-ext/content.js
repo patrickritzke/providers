@@ -20,6 +20,12 @@
     'Screening':              "Run AML/KYC Moody's GRID Playbook on this request to risk score Moody's GRID screening results.",
   };
 
+  const SUGGESTED_PROMPTS = [
+    'Can you summarize any new comments on the request?',
+    'Can you open another request?',
+    'Check the status of this request',
+  ];
+
   /* ---------------- inline SVG icon set ---------------- */
   const ICONS = {
     sparkle: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M19 14l.7 1.8L21.5 16.5l-1.8.7L19 19l-.7-1.8L16.5 16.5l1.8-.7L19 14z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`,
@@ -135,6 +141,15 @@
       return true;
     } catch (_) { return false; }
   }
+  function setSuggestedPrompts(prompts) {
+    if (!celesteFrame?.contentWindow) return;
+    try {
+      celesteFrame.contentWindow.postMessage(
+        { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_SUGGESTED_PROMPTS', payload: prompts },
+        CELESTE_ORIGIN
+      );
+    } catch (_) {}
+  }
   function clearCelesteContext() {
     if (!celesteFrame?.contentWindow) return;
     try {
@@ -190,6 +205,7 @@
 
     function pushMessages() {
       if (ctxString) setCelesteContext('Current request', ctxString);
+      setSuggestedPrompts(SUGGESTED_PROMPTS);
       if (!stageMsg || !frame || !frame.contentWindow) return;
       try {
         frame.contentWindow.postMessage(stageMsg, CELESTE_ORIGIN);
@@ -271,6 +287,7 @@
     if (data.source === 'CelesteSDK_IFRAME' && data.type === 'CELESTE_SDK_REQUEST_CONTEXT') {
       const ctx = readRequestContext();
       if (ctx) setCelesteContext('Current request', ctx);
+      setSuggestedPrompts(SUGGESTED_PROMPTS);
       return;
     }
 

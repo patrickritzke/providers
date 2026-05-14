@@ -17,8 +17,14 @@
 
   const CORP_TREE_Q_ID  = '19e1833affc-23c-c26130206d';
   const CORP_TREE_Q_SEL = `[data-question-id="${CORP_TREE_Q_ID}"]`;
+  const PARTY_ID_Q_ID   = '19e283d118e-250-c1b3a7815e';
   const BTN_MARKER      = 'celeste-add-row-btn';
   const MODAL_TREE_ROOT = 'celeste-modal-tree-root';
+
+  function getClientPartyId() {
+    const label = document.querySelector(`[data-question-id="${PARTY_ID_Q_ID}"] .safe-label`);
+    return label ? label.textContent.trim() : null;
+  }
 
   const TREE_ICON = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
     <rect x="7" y="1" width="6" height="4" rx="1"/>
@@ -190,7 +196,7 @@
 
   // ── Modal ────────────────────────────────────────────────────────────────
 
-  function openTreeModal() {
+  function openTreeModal(partyId) {
     if (document.getElementById('celeste-tree-modal')) return;
 
     const overlay = document.createElement('div');
@@ -254,6 +260,8 @@
       'color:#fff;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer',
     ].join(';');
 
+    if (partyId) partyInput.value = partyId;
+
     partyBar.appendChild(partyInput);
     partyBar.appendChild(loadBtn);
 
@@ -299,16 +307,29 @@
     }
     loadBtn.addEventListener('click', triggerLoad);
     partyInput.addEventListener('keydown', e => { if (e.key === 'Enter') triggerLoad(); });
-    setTimeout(() => partyInput.focus(), 50);
+
+    if (partyId) {
+      setTimeout(triggerLoad, 50);
+    } else {
+      setTimeout(() => partyInput.focus(), 50);
+    }
   }
 
   // ── Button injection (replaces native "Add Row") ─────────────────────────
 
   function injectBtn(questionEl) {
     const nativeBtn = questionEl.querySelector('button.button.tertiary:not(.celeste-add-row-btn)');
+    const partyId   = getClientPartyId();
+
+    // Remove our button if no party ID is available any more
+    const existing = questionEl.querySelector(`.${BTN_MARKER}`);
+    if (!partyId) {
+      if (existing) { existing.remove(); if (nativeBtn) nativeBtn.style.display = ''; }
+      return;
+    }
 
     // Keep native hidden whenever our button is present
-    if (questionEl.querySelector(`.${BTN_MARKER}`)) {
+    if (existing) {
       if (nativeBtn) nativeBtn.style.display = 'none';
       return;
     }
@@ -326,7 +347,7 @@
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      openTreeModal();
+      openTreeModal(getClientPartyId());
     });
 
     nativeBtn.parentElement.insertBefore(btn, nativeBtn);

@@ -251,6 +251,22 @@
     const data = event.data;
     if (!data || typeof data !== 'object') return;
 
+    // Iframe asks for IDM token on load
+    if (data.source === 'CelesteSDK_IFRAME' && data.type === 'CELESTE_SDK_REQUEST_TOKEN') {
+      chrome.storage.local.get(['intapp_token'], (stored) => {
+        const token = stored.intapp_token?.accessToken || stored.intapp_token?.token;
+        if (token && celesteFrame?.contentWindow) {
+          try {
+            celesteFrame.contentWindow.postMessage(
+              { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_TOKEN', payload: { token } },
+              CELESTE_ORIGIN
+            );
+          } catch (_) {}
+        }
+      });
+      return;
+    }
+
     // Iframe asks for context on open — respond with current request URL
     if (data.source === 'CelesteSDK_IFRAME' && data.type === 'CELESTE_SDK_REQUEST_CONTEXT') {
       const ctx = readRequestContext();

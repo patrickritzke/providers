@@ -89,16 +89,28 @@ const CorporateTree = (() => {
         padding: 10px 16px 8px;
         border-bottom: 1px solid #e2e8f0;
         background: #fff; flex-shrink: 0;
-        display: flex; align-items: baseline; gap: 8px;
       }
-      .ct-title {
+      .ct-party-name {
+        font-size: 13px; font-weight: 600; color: #1e293b;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        margin-bottom: 3px;
+      }
+      .ct-party-name.placeholder {
         font-size: 11px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.6px; color: #6366f1; flex-shrink: 0;
+        letter-spacing: 0.6px; color: #6366f1; margin-bottom: 0;
       }
-      .ct-party-id {
-        font-size: 11px; color: #94a3b8; font-family: monospace;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      .ct-tree-meta {
+        display: flex; flex-direction: column; gap: 1px;
       }
+      .ct-tree-meta-row {
+        font-size: 10px; color: #64748b;
+        display: flex; gap: 6px; align-items: center;
+      }
+      .ct-tree-meta-role {
+        font-weight: 600; color: #6366f1;
+      }
+      .ct-tree-meta-sep { color: #cbd5e1; }
+      .ct-tree-meta-provider { color: #94a3b8; }
 
       /* Tab bar */
       .ct-tabs {
@@ -590,8 +602,8 @@ const CorporateTree = (() => {
       ${STYLES}
       <div class="ct-root">
         <div class="ct-header">
-          <div class="ct-title">Corporate Tree</div>
-          <div class="ct-party-id" id="ct-party-id"></div>
+          <div class="ct-party-name placeholder" id="ct-party-name">Corporate Tree</div>
+          <div class="ct-tree-meta" id="ct-tree-meta"></div>
         </div>
         <div class="ct-tabs hidden" id="ct-tabs"></div>
         <div class="ct-filter-bar hidden" id="ct-filter-bar">
@@ -609,7 +621,8 @@ const CorporateTree = (() => {
         </div>
       </div>`;
 
-    const partyIdEl   = document.getElementById('ct-party-id');
+    const partyNameEl = document.getElementById('ct-party-name');
+    const treeMetaEl  = document.getElementById('ct-tree-meta');
     const statusEl    = document.getElementById('ct-status');
     const treeEl      = document.getElementById('ct-tree');
     const tabsEl      = document.getElementById('ct-tabs');
@@ -623,7 +636,9 @@ const CorporateTree = (() => {
     async function load(partyId, rawData) {
       if (!partyId) return;
 
-      partyIdEl.textContent = partyId;
+      partyNameEl.textContent = partyId;
+      partyNameEl.className = 'ct-party-name';
+      treeMetaEl.innerHTML = '';
       statusEl.textContent = 'Loading…';
       statusEl.className = 'ct-status';
       treeEl.innerHTML = '';
@@ -656,6 +671,25 @@ const CorporateTree = (() => {
         tabsEl.querySelectorAll('.ct-tab').forEach(btn => {
           btn.addEventListener('click', () => switchTab(btn.dataset.tab, treeEl, tabsEl, filterBarEl));
         });
+
+        // Header: "Party Name (ID)"
+        const partyNode = state.nodes.find(n => n.partyId === partyId || n.id === partyId);
+        const partyName = partyNode?.name || partyId;
+        partyNameEl.textContent = `${partyName} (${partyId})`;
+        partyNameEl.className = 'ct-party-name';
+
+        // Sub-header: role + provider per tree
+        treeMetaEl.innerHTML = (state.raw.corporateTrees || []).map(tree => {
+          const rootId = tree.rootCompany?.externalId || tree.rootCompany?.partyId;
+          const role = (rootId === String(partyId))
+            ? 'Ultimate Owner'
+            : 'Subsidiary of Ultimate Owner';
+          const provider = tree.providerType || tree.name || '';
+          return `<div class="ct-tree-meta-row">
+            <span class="ct-tree-meta-role">${esc(role)}</span>
+            ${provider ? `<span class="ct-tree-meta-sep">·</span><span class="ct-tree-meta-provider">${esc(provider)}</span>` : ''}
+          </div>`;
+        }).join('');
 
         statusEl.textContent = `${state.nodes.length} entities`;
         renderTree(treeEl, getTreeRoots());

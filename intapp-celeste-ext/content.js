@@ -21,9 +21,9 @@
   };
 
   const SUGGESTED_PROMPTS = [
-    'Can you summarize any new comments on the request?',
-    'Can you open another request?',
-    'Check the status of this request',
+    'Who is this assigned to currently and who has worked on it so far?',
+    'Summarize the comments on this request?',
+    'What are some other similar requests for this client in the last year?',
   ];
 
   /* ---------------- inline SVG icon set ---------------- */

@@ -139,7 +139,11 @@
       treeMounted = true;
       window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {},
-        onSelect: ({ entities }) => {
+        onSelect: ({ entities, actionLabel }) => {
+          if (actionLabel === 'Add to Form' && window.__formHelper) {
+            window.__formHelper.onEntitiesSelected(entities);
+            return;
+          }
           // Forward selected entities to Celeste as a chat message
           const frame = drawerRoot && drawerRoot.querySelector('.celeste-iframe');
           if (!frame || !frame.contentWindow) return;

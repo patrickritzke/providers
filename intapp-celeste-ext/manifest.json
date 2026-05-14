@@ -34,7 +34,7 @@
       "matches": [
         "https://shalaka2-sand.opensandbox2.intapp.com/*"
       ],
-      "js": ["corporate-tree.js", "content.js"],
+      "js": ["corporate-tree.js", "content.js", "form-helper.js"],
       "css": ["drawer.css"],
       "run_at": "document_idle",
       "all_frames": false

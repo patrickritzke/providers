@@ -47,6 +47,9 @@
   const CELESTE_ORIGIN = 'https://shalaka2-sand.my.intapp.com';
   const CELESTE_URL    = `${CELESTE_ORIGIN}/celeste/app`;
 
+  /* ---------------- iframe reference (set once the drawer is built) -------- */
+  let celesteFrame = null;
+
   /* ---------------- drawer markup ---------------- */
   function buildDrawer() {
     const root = el('div', { class: 'celeste-root', id: 'celeste-root' });
@@ -113,6 +116,7 @@
       allow: 'clipboard-read; clipboard-write',
     });
     frame.addEventListener('load', () => drawer.classList.add('celeste-iframe-loaded'));
+    celesteFrame = frame;
     drawer.appendChild(frame);
 
     drawers.appendChild(drawer);
@@ -126,10 +130,19 @@
       window.CelesteSDK.setContext({ title, context });
       return true;
     }
+    // Fallback: send as a hidden system message to the Celeste iframe
+    if (celesteFrame?.contentWindow) {
+      try {
+        celesteFrame.contentWindow.postMessage(
+          { type: 'CELESTE_PASTE_AND_SEND', text: `CONTEXT: ${title}: ${context}` },
+          CELESTE_ORIGIN
+        );
+      } catch (_) {}
+    }
     return false;
   }
   function readRequestContext() {
-    try { return `URL: ${window.location.href}`; } catch (_) { return null; }
+    try { return window.location.href; } catch (_) { return null; }
   }
 
   /* ---------------- open / close ---------------- */
@@ -171,17 +184,16 @@
     const stagePrompt = btn && btn.dataset.stagePrompt ? btn.dataset.stagePrompt : null;
     const ctxString = readRequestContext();
 
-    // URL goes to SDK context, not chat
-    if (ctxString) setCelesteContext('Current request', ctxString);
-
-    // Stage prompt (if any) is still sent as a chat instruction
+    // Stage prompt (if any) is sent as a chat instruction
     if (stagePrompt && btn) { delete btn.dataset.stagePrompt; delete btn.dataset.stage; }
-    const message = stagePrompt ? { type: 'CELESTE_PASTE_AND_SEND', text: stagePrompt } : null;
+    const stageMsg = stagePrompt ? { type: 'CELESTE_PASTE_AND_SEND', text: stagePrompt } : null;
 
-    function pushPrompt() {
-      if (!message || !frame || !frame.contentWindow) return;
+    function pushMessages() {
+      // URL context first, then stage prompt (so prompt appears after context in chat)
+      if (ctxString) setCelesteContext('Current request', ctxString);
+      if (!stageMsg || !frame || !frame.contentWindow) return;
       try {
-        frame.contentWindow.postMessage(message, CELESTE_ORIGIN);
+        frame.contentWindow.postMessage(stageMsg, CELESTE_ORIGIN);
       } catch (e) {
         console.warn('[Celeste] postMessage failed', e);
       }
@@ -189,10 +201,10 @@
 
     if (frame) {
       if (!frame.src) {
-        frame.addEventListener('load', () => setTimeout(pushPrompt, 400), { once: true });
+        frame.addEventListener('load', () => setTimeout(pushMessages, 400), { once: true });
         frame.src = CELESTE_URL;
       } else {
-        setTimeout(pushPrompt, 100);
+        setTimeout(pushMessages, 100);
       }
     }
   }
@@ -245,7 +257,7 @@
         data.type === 'CELESTE_SDK_REQUEST_CONTEXT') {
       const ctx = readRequestContext();
       if (ctx) setCelesteContext('Current request', ctx);
-      return;
+      return; // setCelesteContext handles both SDK and postMessage fallback
     }
 
     if (data.type === 'CELESTE_OPEN_TREE' && data.partyId) {

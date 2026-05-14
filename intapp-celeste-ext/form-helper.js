@@ -1,10 +1,12 @@
 /* =====================================================================
- * form-helper.js — Intapp intake form: tree → grdTree API write
+ * form-helper.js — inject "Add from Tree" on all grid questions
  *
- * Exposes window.__formHelper.onEntitiesSelected(entities), called by
- * content.js when the user clicks "Add to Form" in the tree panel.
- * Writes selected entities directly to the grdTree MultiColumnListInput
- * via POST /api/api/intake/v1/requests/{id}/answers.
+ * Injects a button next to the native "Add Row" button on every
+ * MultiColumnListInput question on the page. Clicking it records
+ * the target question's data-question-id and opens the Celeste tree
+ * panel. When the user selects entities and clicks "Add to Form",
+ * content.js calls window.__formHelper.onEntitiesSelected(entities),
+ * which GETs the current answer, merges new rows, and POSTs back.
  * ===================================================================== */
 
 (function () {
@@ -13,7 +15,13 @@
   if (window.__formHelperInjected) return;
   window.__formHelperInjected = true;
 
-  const GRID_Q_NAME = 'grdTree';
+  const BTN_MARKER = 'celeste-add-row-btn';
+
+  // The question whose grid the next "Add to Form" action will target.
+  // Set when the user clicks "Add from Tree" on a specific question.
+  let _targetQuestionId = null;
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
 
   function getRequestId() {
     const m = window.location.pathname.match(/\/requests\/(\d+)/);
@@ -40,8 +48,6 @@
       `</GridRow>`;
   }
 
-  // Parse existing GridRows from SimpleXml, returning
-  // { rowId, bbgId, raw } for each row.
   function parseExistingRows(xml) {
     if (!xml) return [];
     const rows = [];
@@ -56,20 +62,19 @@
     return rows;
   }
 
-  // Merge new entities into existing rows (append only, skip duplicates by bbgId).
-  // Returns complete SimpleXml string.
+  // Append only entities not already present (dedup by bbgId).
+  // Returns merged SimpleXml string, or null if nothing to add.
   function mergeIntoXml(existingXml, entities) {
     const existing    = parseExistingRows(existingXml);
     const existingIds = new Map(existing.map(r => [r.bbgId, r.rowId]));
 
-    // Only add entities not already present
     const toAdd = entities.filter(e => !existingIds.has(e.id));
-    if (!toAdd.length) return null; // nothing to do
+    if (!toAdd.length) return null;
 
     // Topological sort so parents precede children within the new batch
-    const addSet   = new Set(toAdd.map(e => e.id));
-    const sorted   = [];
-    const visited  = new Set();
+    const addSet  = new Set(toAdd.map(e => e.id));
+    const sorted  = [];
+    const visited = new Set();
     function visit(e) {
       if (visited.has(e.id)) return;
       if (e.parentId && addSet.has(e.parentId)) {
@@ -81,29 +86,32 @@
     }
     toAdd.forEach(e => visit(e));
 
-    // New RowIds start after the highest existing RowId
-    let nextRowId = existing.length
-      ? Math.max(...existing.map(r => r.rowId)) + 1
-      : 0;
+    let nextRowId = existing.length ? Math.max(...existing.map(r => r.rowId)) + 1 : 0;
     const newRowIdOf = {};
     sorted.forEach(e => { newRowIdOf[e.id] = nextRowId++; });
 
     const newRows = sorted.map(e => {
       let parentRowId = '';
       if (e.parentId != null) {
-        if (existingIds.has(e.parentId))       parentRowId = existingIds.get(e.parentId);
-        else if (newRowIdOf[e.parentId] != null) parentRowId = newRowIdOf[e.parentId];
+        if (existingIds.has(e.parentId))          parentRowId = existingIds.get(e.parentId);
+        else if (newRowIdOf[e.parentId] != null)  parentRowId = newRowIdOf[e.parentId];
       }
       return makeGridRow(newRowIdOf[e.id], parentRowId, e);
     });
 
-    const allRows = existing.map(r => r.raw).concat(newRows).join('');
-    return `<Grid>${allRows}</Grid>`;
+    return `<Grid>${existing.map(r => r.raw).concat(newRows).join('')}</Grid>`;
   }
+
+  // ── Public API ───────────────────────────────────────────────────────────
 
   window.__formHelper = {
     async onEntitiesSelected(entities) {
       if (!entities?.length) return;
+
+      if (!_targetQuestionId) {
+        console.error('[form-helper] No target question — click "Add from Tree" on a grid question first.');
+        return;
+      }
 
       const requestId = getRequestId();
       if (!requestId) {
@@ -120,26 +128,26 @@
 
       const host = appHost.replace(/\/+$/, '');
 
-      // GET current answer to retrieve existing rows, answer id, and questionId
+      // GET all answers so we can find this question by questionId
       let answerId    = null;
-      let questionId  = null;
-      let existingXml = null;
+      let questionName = null;
+      let existingXml  = null;
       try {
         const getRes = await fetch(
-          `https://${host}/api/api/intake/v1/requests/${requestId}?questionNames=${GRID_Q_NAME}`,
+          `https://${host}/api/api/intake/v1/requests/${requestId}`,
           { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
         );
         if (getRes.ok) {
           const data   = await getRes.json();
-          const answer = data.answers?.find(a => a.questionName === GRID_Q_NAME);
+          const answer = data.answers?.find(a => a.questionId === _targetQuestionId);
           if (answer) {
-            answerId    = answer.id;
-            questionId  = answer.questionId;
-            existingXml = answer.dataTableSimpleXmlAnswer || null;
+            answerId     = answer.id;
+            questionName = answer.questionName || null;
+            existingXml  = answer.dataTableSimpleXmlAnswer || null;
           }
         }
       } catch (e) {
-        console.warn('[form-helper] GET answer failed:', e.message);
+        console.warn('[form-helper] GET failed:', e.message);
       }
 
       const xml = mergeIntoXml(existingXml, entities);
@@ -149,12 +157,12 @@
       }
 
       const body = [Object.assign(
-        { questionName: GRID_Q_NAME, answerType: 'DataTable', dataTableSimpleXmlAnswer: xml },
-        answerId   != null ? { id: answerId }  : {},
-        questionId != null ? { questionId }    : {}
+        { questionId: _targetQuestionId, answerType: 'DataTable', dataTableSimpleXmlAnswer: xml },
+        answerId     != null ? { id: answerId }   : {},
+        questionName != null ? { questionName }   : {}
       )];
 
-      console.log('[form-helper] POSTing', entities.length, 'entities to grdTree on request', requestId);
+      console.log('[form-helper] POSTing', entities.length, 'entities to question', _targetQuestionId, 'on request', requestId);
       try {
         const postRes = await fetch(
           `https://${host}/api/api/intake/v1/requests/${requestId}/answers`,
@@ -165,7 +173,7 @@
           }
         );
         if (postRes.ok) {
-          console.log('[form-helper] grdTree updated —', entities.length, 'rows written');
+          console.log('[form-helper] grid updated —', entities.length, 'rows written');
         } else {
           const err = await postRes.text();
           console.error('[form-helper] POST failed', postRes.status, err.slice(0, 300));
@@ -175,5 +183,61 @@
       }
     },
   };
+
+  // ── Button injection ─────────────────────────────────────────────────────
+  // Inject "Add from Tree" next to the native "Add Row" button on every
+  // grid question (any [data-question-id] that has a button.button.tertiary).
+
+  function injectBtn(questionEl) {
+    if (questionEl.querySelector(`.${BTN_MARKER}`)) return;
+    const nativeBtn = questionEl.querySelector('button.button.tertiary');
+    if (!nativeBtn) return;
+
+    const questionId = questionEl.dataset.questionId;
+
+    const btn = document.createElement('button');
+    btn.type      = 'button';
+    btn.className = `button tertiary ${BTN_MARKER}`;
+    btn.textContent = 'Add from Tree';
+    btn.title = 'Select entities in the corporate tree panel and add them to this grid';
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      _targetQuestionId = questionId;
+      window.__celeste?.openDrawer();
+    });
+
+    nativeBtn.parentElement.insertBefore(btn, nativeBtn.nextSibling);
+  }
+
+  function tryInjectAll() {
+    document.querySelectorAll('[data-question-id]').forEach(injectBtn);
+  }
+
+  (function watchQuestions() {
+    let scheduled = false;
+    function schedule() {
+      if (scheduled) return;
+      scheduled = true;
+      setTimeout(() => {
+        scheduled = false;
+        try { tryInjectAll(); } catch (_) {}
+      }, 200);
+    }
+
+    tryInjectAll();
+
+    const obs = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        const t = m.target;
+        if (t && t.classList?.contains(BTN_MARKER))   continue;
+        if (t && t.closest?.(`.${BTN_MARKER}`))       continue;
+        schedule();
+        return;
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+  })();
 
 })();

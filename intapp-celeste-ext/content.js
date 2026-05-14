@@ -229,6 +229,10 @@
     if (drawerRoot) drawerRoot.classList.remove('celeste-tree-open');
   }
 
+  // Allow other content scripts (form-helper) to open the drawer
+  window.__celeste = window.__celeste || {};
+  window.__celeste.openDrawer = openDrawer;
+
   // Listen for tree trigger messages from the Celeste iframe receiver.
   // Pre-fetch the corporate tree before opening — drawer only appears on success.
   window.addEventListener('message', (event) => {

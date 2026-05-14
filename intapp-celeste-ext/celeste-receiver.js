@@ -132,15 +132,26 @@
   //
   // Greedy .+ ensures we match the LAST (ID) on the line, not the first.
   const TREE_RE = /corporate\s+(?:structure|tree|family)\s+for\s+.+\(([A-Za-z0-9_-]+)\)|\[open-tree:\s*([A-Za-z0-9_-]+)\]|\[tree:\s*([A-Za-z0-9_-]+)\]|open[_-]tree:\s*([A-Za-z0-9_-]+)|\btree-([A-Za-z0-9_-]+)\b/i;
+
+  // Matches the "Get Party Corporate Family ✓ Approved … Partyid: "1764"" tool card
+  const TOOL_APPROVAL_RE = /Get\s+Party\s+Corporate\s+Family[\s\S]{0,600}?Partyid:\s*["']?(\d+)["']?/i;
+
   let lastPartyId = null;
   let lastPartyTime = 0;
 
   function checkForTreeTrigger(text) {
     if (!text) return;
-    const match = TREE_RE.exec(text);
-    if (!match) return;
-    // Pick whichever capture group matched
-    const partyId = match[1] || match[2] || match[3] || match[4] || match[5];
+
+    let partyId = null;
+
+    const m = TREE_RE.exec(text);
+    if (m) partyId = m[1] || m[2] || m[3] || m[4] || m[5];
+
+    if (!partyId) {
+      const tm = TOOL_APPROVAL_RE.exec(text);
+      if (tm) partyId = tm[1];
+    }
+
     const now = Date.now();
     // Debounce: same party ID within 3 s is treated as one trigger
     if (partyId === lastPartyId && now - lastPartyTime < 3000) return;

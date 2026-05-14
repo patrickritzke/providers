@@ -86,32 +86,19 @@ const CorporateTree = (() => {
       }
 
       .ct-header {
-        padding: 14px 16px 10px;
+        padding: 10px 16px 8px;
         border-bottom: 1px solid #e2e8f0;
         background: #fff; flex-shrink: 0;
+        display: flex; align-items: baseline; gap: 8px;
       }
       .ct-title {
         font-size: 11px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.6px; color: #6366f1; margin-bottom: 10px;
+        letter-spacing: 0.6px; color: #6366f1; flex-shrink: 0;
       }
-      .ct-search-row { display: flex; gap: 7px; }
-      .ct-input {
-        flex: 1; padding: 7px 10px;
-        border: 1.5px solid #e2e8f0; border-radius: 6px;
-        font-size: 12px; font-family: inherit; color: #1e293b;
-        background: #f8fafc; outline: none; transition: all 0.15s;
+      .ct-party-id {
+        font-size: 11px; color: #94a3b8; font-family: monospace;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
-      .ct-input:focus { border-color: #6366f1; background: #fff; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
-      .ct-input::placeholder { color: #cbd5e1; }
-      .ct-load-btn {
-        padding: 7px 14px; border-radius: 6px; border: none;
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
-        color: #fff; font-size: 12px; font-weight: 600;
-        font-family: inherit; cursor: pointer; transition: opacity 0.15s;
-        white-space: nowrap;
-      }
-      .ct-load-btn:hover { opacity: 0.88; }
-      .ct-load-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
       /* Tab bar */
       .ct-tabs {
@@ -604,19 +591,14 @@ const CorporateTree = (() => {
       <div class="ct-root">
         <div class="ct-header">
           <div class="ct-title">Corporate Tree</div>
-          <div class="ct-search-row">
-            <input class="ct-input" id="ct-query" type="text"
-              placeholder="Party ID (e.g. US123456)"
-              autocomplete="off" spellcheck="false" />
-            <button class="ct-load-btn" id="ct-load">Load</button>
-          </div>
+          <div class="ct-party-id" id="ct-party-id"></div>
         </div>
         <div class="ct-tabs hidden" id="ct-tabs"></div>
         <div class="ct-filter-bar hidden" id="ct-filter-bar">
           <span class="ct-filter-label">Filtered: <span class="ct-filter-name"></span></span>
           <button class="ct-filter-clear" id="ct-filter-clear">✕ Clear</button>
         </div>
-        <div class="ct-status" id="ct-status">Enter a party ID to load its corporate family.</div>
+        <div class="ct-status" id="ct-status">Waiting for party data…</div>
         <div class="ct-tree" id="ct-tree"></div>
         <div class="ct-sel-bar">
           <span class="ct-sel-count" id="ct-sel-count"><strong>0</strong> selected</span>
@@ -627,8 +609,7 @@ const CorporateTree = (() => {
         </div>
       </div>`;
 
-    const queryInput  = document.getElementById('ct-query');
-    const loadBtn     = document.getElementById('ct-load');
+    const partyIdEl   = document.getElementById('ct-party-id');
     const statusEl    = document.getElementById('ct-status');
     const treeEl      = document.getElementById('ct-tree');
     const tabsEl      = document.getElementById('ct-tabs');
@@ -639,12 +620,10 @@ const CorporateTree = (() => {
       clearFilter(treeEl, filterBarEl);
     });
 
-    async function load() {
-      const query = queryInput.value.trim();
-      if (!query) return;
+    async function load(partyId) {
+      if (!partyId) return;
 
-      loadBtn.disabled = true;
-      loadBtn.textContent = 'Loading…';
+      partyIdEl.textContent = partyId;
       statusEl.textContent = 'Fetching corporate family…';
       statusEl.className = 'ct-status';
       treeEl.innerHTML = '';
@@ -653,12 +632,12 @@ const CorporateTree = (() => {
       filterBarEl.classList.add('hidden');
       state.selected.clear();
       state.collapsed.clear();
-      state.activeTab = 'tree';
+      state.activeTab     = 'tree';
       state._filterNodeId = null;
       updateSelBar();
 
       try {
-        const result = await fetchCorporateFamily(query);
+        const result = await fetchCorporateFamily(partyId);
         state.nodes = result.nodes;
         state.raw   = result.raw;
         if (!state.nodes.length) { statusEl.textContent = 'No results found.'; return; }
@@ -671,26 +650,17 @@ const CorporateTree = (() => {
           btn.addEventListener('click', () => switchTab(btn.dataset.tab, treeEl, tabsEl, filterBarEl));
         });
 
-        statusEl.textContent = `${state.nodes.length} entities — ${query}`;
+        statusEl.textContent = `${state.nodes.length} entities`;
         renderTree(treeEl, getTreeRoots());
         if (!state._treeBound) { bindTreeEvents(treeEl, filterBarEl); state._treeBound = true; }
         if (state.onLoad) state.onLoad(state.nodes);
       } catch (err) {
         statusEl.textContent = `⚠ ${err.message}`;
         statusEl.className = 'ct-status err';
-      } finally {
-        loadBtn.disabled = false;
-        loadBtn.textContent = 'Load';
       }
     }
 
-    state._triggerLoad = (partyId) => {
-      queryInput.value = partyId;
-      load();
-    };
-
-    loadBtn.addEventListener('click', load);
-    queryInput.addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+    state._triggerLoad = (partyId) => load(partyId);
 
     actionBtn.addEventListener('click', () => {
       if (!state.onSelect) return;

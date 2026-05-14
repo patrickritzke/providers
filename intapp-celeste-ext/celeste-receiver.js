@@ -31,7 +31,6 @@
   ];
 
   function log(...a) { try { console.log('[Celeste-receiver]', ...a); } catch (_) {} }
-  log('loaded on', location.href);
 
   /* ---- wait for element ---- */
   function waitForElement(selectors, timeout = 8000) {
@@ -120,9 +119,17 @@
   }
 
   /* ---- tree trigger watcher ---- */
-  // Watches Celeste chat output for "tree-<partyId>" and tells the parent
+  // Watches Celeste chat output for trigger patterns and tells the parent
   // to open the corporate tree panel with that party pre-loaded.
-  const TREE_RE = /\btree-([A-Za-z0-9]+)\b/i;
+  //
+  // Supported formats (configure whichever in your Celeste system prompt):
+  //   [open-tree: US123456]          ← recommended canonical form
+  //   [tree: US123456]
+  //   open_tree: US123456
+  //   tree-US123456                  ← legacy
+  //
+  // The regex captures the party ID from any of these.
+  const TREE_RE = /\[open-tree:\s*([A-Za-z0-9_-]+)\]|\[tree:\s*([A-Za-z0-9_-]+)\]|open[_-]tree:\s*([A-Za-z0-9_-]+)|\btree-([A-Za-z0-9_-]+)\b/i;
   let lastPartyId = null;
   let lastPartyTime = 0;
 
@@ -130,13 +137,13 @@
     if (!text) return;
     const match = TREE_RE.exec(text);
     if (!match) return;
-    const partyId = match[1];
+    // Pick whichever capture group matched
+    const partyId = match[1] || match[2] || match[3] || match[4];
     const now = Date.now();
     // Debounce: same party ID within 3 s is treated as one trigger
     if (partyId === lastPartyId && now - lastPartyTime < 3000) return;
     lastPartyId = partyId;
     lastPartyTime = now;
-    log('tree trigger detected, partyId:', partyId);
     try {
       window.parent.postMessage({ type: 'CELESTE_OPEN_TREE', partyId }, PARENT_ORIGIN);
     } catch (e) {
@@ -161,7 +168,6 @@
       }
     });
     obs.observe(document.body, { childList: true, subtree: true });
-    log('tree trigger watcher active');
   }
 
   /* ---- inbound message listener (from parent) ---- */
@@ -170,7 +176,6 @@
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type !== 'CELESTE_PASTE_AND_SEND' || typeof data.text !== 'string') return;
-    log('received CELESTE_PASTE_AND_SEND from', event.origin);
     pasteAndSend(data.text);
   });
 

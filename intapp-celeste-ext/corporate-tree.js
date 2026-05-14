@@ -273,6 +273,7 @@ const CorporateTree = (() => {
     _nodeMap:      {},
     _sectionItems: {},
     _filterNodeId: null,
+    _treeBound:    false,
     onSelect:      null,
     onLoad:        null,
     actionLabel:   'Send to Celeste',
@@ -357,36 +358,40 @@ const CorporateTree = (() => {
       </div>`;
   }
 
-  function renderTree(treeEl, roots, filterBarEl) {
+  function renderTree(treeEl, roots) {
     treeEl.innerHTML = roots.map(r => renderNode(r, 0)).join('');
+  }
 
-    treeEl.querySelectorAll('[data-toggle]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        const id = btn.dataset.toggle;
+  // Called once after mount — single delegated listener survives re-renders
+  function bindTreeEvents(treeEl, filterBarEl) {
+    treeEl.addEventListener('click', e => {
+      // Caret → dropdown (must check before row)
+      const caretEl = e.target.closest('[data-caret]');
+      if (caretEl) {
+        showNodeDropdown(caretEl.dataset.caret, caretEl, treeEl, filterBarEl);
+        return;
+      }
+
+      // Toggle expand/collapse
+      const toggleEl = e.target.closest('[data-toggle]');
+      if (toggleEl) {
+        const id = toggleEl.dataset.toggle;
         if (state.collapsed.has(id)) state.collapsed.delete(id);
         else state.collapsed.add(id);
-        renderTree(treeEl, getTreeRoots(), filterBarEl);
+        renderTree(treeEl, getTreeRoots());
         updateSelBar();
-      });
-    });
+        return;
+      }
 
-    treeEl.querySelectorAll('[data-caret]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        showNodeDropdown(btn.dataset.caret, btn, treeEl, filterBarEl);
-      });
-    });
-
-    treeEl.querySelectorAll('[data-row]').forEach(row => {
-      row.addEventListener('click', e => {
-        if (e.target.dataset.toggle || e.target.dataset.caret) return;
-        const id = row.dataset.row;
+      // Row → checkbox toggle
+      const rowEl = e.target.closest('[data-row]');
+      if (rowEl) {
+        const id = rowEl.dataset.row;
         if (state.selected.has(id)) state.selected.delete(id);
         else state.selected.add(id);
-        renderTree(treeEl, getTreeRoots(), filterBarEl);
+        renderTree(treeEl, getTreeRoots());
         updateSelBar();
-      });
+      }
     });
   }
 
@@ -430,7 +435,7 @@ const CorporateTree = (() => {
       btn.classList.toggle('active', btn.dataset.tab === tabId);
     });
     if (tabId === 'tree') {
-      renderTree(treeEl, getTreeRoots(), filterBarEl);
+      renderTree(treeEl, getTreeRoots());
     } else {
       // Filter only applies to tree tab
       filterBarEl.classList.add('hidden');
@@ -457,7 +462,7 @@ const CorporateTree = (() => {
             state.selected.add(cur.id);
             cur = cur.parentId ? state._nodeMap[cur.parentId] : null;
           }
-          renderTree(treeEl, getTreeRoots(), filterBarEl);
+          renderTree(treeEl, getTreeRoots());
           updateSelBar();
         },
       });
@@ -468,7 +473,7 @@ const CorporateTree = (() => {
         label: 'Select direct children',
         action() {
           node.children.forEach(c => state.selected.add(c.id));
-          renderTree(treeEl, getTreeRoots(), filterBarEl);
+          renderTree(treeEl, getTreeRoots());
           updateSelBar();
         },
       });
@@ -476,7 +481,7 @@ const CorporateTree = (() => {
         label: 'Select all children',
         action() {
           selectAllDescendants(node);
-          renderTree(treeEl, getTreeRoots(), filterBarEl);
+          renderTree(treeEl, getTreeRoots());
           updateSelBar();
         },
       });
@@ -552,7 +557,7 @@ const CorporateTree = (() => {
   function applyFilter(nodeId, treeEl, filterBarEl) {
     state._filterNodeId = nodeId;
     state.collapsed.clear();
-    renderTree(treeEl, getTreeRoots(), filterBarEl);
+    renderTree(treeEl, getTreeRoots());
     updateSelBar();
     const node = state._nodeMap[nodeId];
     filterBarEl.querySelector('.ct-filter-name').textContent = node ? node.name : nodeId;
@@ -562,7 +567,7 @@ const CorporateTree = (() => {
   function clearFilter(treeEl, filterBarEl) {
     state._filterNodeId = null;
     filterBarEl.classList.add('hidden');
-    renderTree(treeEl, getTreeRoots(), filterBarEl);
+    renderTree(treeEl, getTreeRoots());
     updateSelBar();
   }
 
@@ -591,7 +596,8 @@ const CorporateTree = (() => {
     state.actionIcon  = opts.actionIcon  || '💬';
     state.selected.clear();
     state.collapsed.clear();
-    state.activeTab = 'tree';
+    state.activeTab  = 'tree';
+    state._treeBound = false;
 
     root.innerHTML = `
       ${STYLES}
@@ -666,7 +672,8 @@ const CorporateTree = (() => {
         });
 
         statusEl.textContent = `${state.nodes.length} entities — ${query}`;
-        renderTree(treeEl, getTreeRoots(), filterBarEl);
+        renderTree(treeEl, getTreeRoots());
+        if (!state._treeBound) { bindTreeEvents(treeEl, filterBarEl); state._treeBound = true; }
         if (state.onLoad) state.onLoad(state.nodes);
       } catch (err) {
         statusEl.textContent = `⚠ ${err.message}`;

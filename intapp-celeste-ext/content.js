@@ -121,6 +121,8 @@
   }
 
   /* ---------------- Celeste SDK context helpers ---------------- */
+  const _entityContext = new Map(); // id → entity, accumulates across selections
+
   function setCelesteContext(title, context) {
     if (window.CelesteSDK?.setContext) {
       window.CelesteSDK.setContext({ title, context });
@@ -147,8 +149,11 @@
       window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {},
         onSelect: ({ entities }) => {
-          const lines = entities.map(e => `- ${e.name} (${e.id}${e.countryCode ? ', ' + e.countryCode : ''})`).join('\n');
-          const title = `Corporate entities (${entities.length})`;
+          // Merge into the running accumulator so repeated selections are additive
+          entities.forEach(e => _entityContext.set(e.id, e));
+          const all   = [..._entityContext.values()];
+          const lines = all.map(e => `- ${e.name} (${e.id}${e.countryCode ? ', ' + e.countryCode : ''})`).join('\n');
+          const title = `Corporate entities (${all.length})`;
           // Prefer SDK context injection; fall back to chat message
           if (!setCelesteContext(title, lines)) {
             const frame = drawerRoot && drawerRoot.querySelector('.celeste-iframe');

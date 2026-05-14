@@ -139,11 +139,7 @@
       treeMounted = true;
       window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {},
-        onSelect: ({ entities, actionLabel }) => {
-          if (actionLabel === 'Add to Request Grid' && window.__formHelper) {
-            window.__formHelper.onEntitiesSelected(entities);
-            return;
-          }
+        onSelect: ({ entities }) => {
           // Forward selected entities to Celeste as a chat message
           const frame = drawerRoot && drawerRoot.querySelector('.celeste-iframe');
           if (!frame || !frame.contentWindow) return;
@@ -155,7 +151,7 @@
             console.warn('[Celeste] tree entity postMessage failed', e);
           }
         },
-        actionLabel: 'Add to Request Grid',
+        actionLabel: 'Send to Celeste',
         actionIcon: '💬',
       });
     }

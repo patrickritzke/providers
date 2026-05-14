@@ -290,7 +290,7 @@
 
     // Mount corporate tree into modal
     window.CorporateTree.mount(`#${MODAL_TREE_ROOT}`, {
-      actionLabel: 'Add to Request Grid',
+      actionLabel: 'Add to form grid',
       onSelect: ({ entities }) => {
         window.__formHelper.onEntitiesSelected(entities);
         closeModal();

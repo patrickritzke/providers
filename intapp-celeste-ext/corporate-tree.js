@@ -742,18 +742,18 @@ const CorporateTree = (() => {
         partyNameEl.textContent = `${partyName} (${partyDispId})`;
         partyNameEl.className = 'ct-party-name';
 
-        // Sub-header: role per tree — "Ultimate Owner" or "Subsidiary of Root Name (ID)"
-        const thisId = String(rawParty.partyId || rawParty.externalId || partyId);
+        // Sub-header: role per tree — compare internal partyId (not provider externalId)
+        const thisInternalId = String(rawParty.partyId || partyId);
         treeMetaEl.innerHTML = (state.raw.corporateTrees || []).map(tree => {
-          const root   = tree.rootCompany;
-          const rootId = String(root?.externalId || root?.partyId || '');
-          const provider = tree.providerType || tree.name || '';
+          const root           = tree.rootCompany;
+          const rootInternalId = String(root?.partyId || '');
+          const provider       = tree.providerType || tree.name || '';
           let roleHtml;
-          if (rootId === thisId) {
+          if (rootInternalId === thisInternalId) {
             roleHtml = `<span class="ct-tree-meta-role">Ultimate Owner</span>`;
           } else {
-            const rootName = root?.name || rootId;
-            roleHtml = `<span class="ct-tree-meta-role">Subsidiary of</span> <span class="ct-tree-meta-owner">${esc(rootName)} (${esc(rootId)})</span>`;
+            const rootName = root?.name || rootInternalId;
+            roleHtml = `<span class="ct-tree-meta-role">Subsidiary of</span> <span class="ct-tree-meta-owner">${esc(rootName)} (${esc(rootInternalId)})</span>`;
           }
           return `<div class="ct-tree-meta-row">
             ${roleHtml}

@@ -171,16 +171,14 @@
     const stagePrompt = btn && btn.dataset.stagePrompt ? btn.dataset.stagePrompt : null;
     const ctxString = readRequestContext();
 
-    let payloadText = null;
-    if (stagePrompt) {
-      payloadText = `CONTEXT: ${ctxString}\n\nPROMPT: ${stagePrompt}`;
-      if (btn) { delete btn.dataset.stagePrompt; delete btn.dataset.stage; }
-    } else if (ctxString) {
-      payloadText = `CONTEXT: ${ctxString}`;
-    }
-    const message = payloadText ? { type: 'CELESTE_PASTE_AND_SEND', text: payloadText } : null;
+    // URL goes to SDK context, not chat
+    if (ctxString) setCelesteContext('Current request', ctxString);
 
-    function pushContext() {
+    // Stage prompt (if any) is still sent as a chat instruction
+    if (stagePrompt && btn) { delete btn.dataset.stagePrompt; delete btn.dataset.stage; }
+    const message = stagePrompt ? { type: 'CELESTE_PASTE_AND_SEND', text: stagePrompt } : null;
+
+    function pushPrompt() {
       if (!message || !frame || !frame.contentWindow) return;
       try {
         frame.contentWindow.postMessage(message, CELESTE_ORIGIN);
@@ -191,10 +189,10 @@
 
     if (frame) {
       if (!frame.src) {
-        frame.addEventListener('load', () => setTimeout(pushContext, 400), { once: true });
+        frame.addEventListener('load', () => setTimeout(pushPrompt, 400), { once: true });
         frame.src = CELESTE_URL;
       } else {
-        setTimeout(pushContext, 100);
+        setTimeout(pushPrompt, 100);
       }
     }
   }

@@ -126,20 +126,23 @@
 
   /* ---------------- Celeste SDK context helpers ---------------- */
   function setCelesteContext(title, context) {
-    if (window.CelesteSDK?.setContext) {
-      window.CelesteSDK.setContext({ title, context });
+    if (!celesteFrame?.contentWindow) return false;
+    try {
+      celesteFrame.contentWindow.postMessage(
+        { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_CONTEXT', payload: { title, context } },
+        CELESTE_ORIGIN
+      );
       return true;
-    }
-    // Fallback: send as a hidden system message to the Celeste iframe
-    if (celesteFrame?.contentWindow) {
-      try {
-        celesteFrame.contentWindow.postMessage(
-          { type: 'CELESTE_PASTE_AND_SEND', text: `CONTEXT: ${title}: ${context}` },
-          CELESTE_ORIGIN
-        );
-      } catch (_) {}
-    }
-    return false;
+    } catch (_) { return false; }
+  }
+  function clearCelesteContext() {
+    if (!celesteFrame?.contentWindow) return;
+    try {
+      celesteFrame.contentWindow.postMessage(
+        { source: 'CelesteSDK', type: 'CELESTE_SDK_CLEAR_CONTEXT' },
+        CELESTE_ORIGIN
+      );
+    } catch (_) {}
   }
   function readRequestContext() {
     try { return window.location.href; } catch (_) { return null; }
@@ -160,10 +163,7 @@
       window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {},
         onChange: (entities) => {
-          if (!entities.length) {
-            if (window.CelesteSDK?.clearContext) window.CelesteSDK.clearContext();
-            return;
-          }
+          if (!entities.length) { clearCelesteContext(); return; }
           const lines = entities.map(e => `- ${e.name} (${e.id}${e.countryCode ? ', ' + e.countryCode : ''})`).join('\n');
           setCelesteContext(`Corporate entities (${entities.length})`, lines);
         },
@@ -189,7 +189,6 @@
     const stageMsg = stagePrompt ? { type: 'CELESTE_PASTE_AND_SEND', text: stagePrompt } : null;
 
     function pushMessages() {
-      // URL context first, then stage prompt (so prompt appears after context in chat)
       if (ctxString) setCelesteContext('Current request', ctxString);
       if (!stageMsg || !frame || !frame.contentWindow) return;
       try {
@@ -252,12 +251,11 @@
     const data = event.data;
     if (!data || typeof data !== 'object') return;
 
-    // Celeste SDK asks for context when chat opens or needs a refresh
-    if ((data.source === 'CelesteSDK' || data.source === 'CelesteSDK_IFRAME') &&
-        data.type === 'CELESTE_SDK_REQUEST_CONTEXT') {
+    // Iframe asks for context on open — respond with current request URL
+    if (data.source === 'CelesteSDK_IFRAME' && data.type === 'CELESTE_SDK_REQUEST_CONTEXT') {
       const ctx = readRequestContext();
       if (ctx) setCelesteContext('Current request', ctx);
-      return; // setCelesteContext handles both SDK and postMessage fallback
+      return;
     }
 
     if (data.type === 'CELESTE_OPEN_TREE' && data.partyId) {

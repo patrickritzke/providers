@@ -147,6 +147,22 @@ const CorporateTree = (() => {
       }
       .ct-filter-clear:hover { background: #c7d2fe; }
 
+      /* Tree toolbar (Filter to Party button) */
+      .ct-tree-toolbar {
+        display: flex; align-items: center; justify-content: flex-end;
+        flex-shrink: 0; padding: 4px 12px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .ct-tree-toolbar.hidden { display: none; }
+      .ct-filter-party-btn {
+        padding: 3px 10px; border-radius: 5px;
+        border: 1px solid #c7d2fe; background: #eef2ff;
+        color: #4338ca; font-size: 11px; font-weight: 500; font-family: inherit;
+        cursor: pointer; transition: all 0.15s; white-space: nowrap;
+      }
+      .ct-filter-party-btn:hover { background: #c7d2fe; border-color: #a5b4fc; }
+      .ct-filter-party-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+
       .ct-status {
         padding: 8px 16px; font-size: 11px; color: #94a3b8;
         font-style: italic; flex-shrink: 0;
@@ -271,13 +287,15 @@ const CorporateTree = (() => {
     _tabData:      {},
     _nodeMap:      {},
     _sectionItems: {},
-    _filterNodeId: null,
-    _treeBound:    false,
-    onSelect:      null,
-    onLoad:        null,
-    actionLabel:   'Send to Celeste',
-    actionIcon:    '💬',
-    _triggerLoad:  null,
+    _filterNodeId:  null,
+    _loadedPartyId: null,
+    _treeBound:     false,
+    onSelect:       null,
+    onLoad:         null,
+    actionLabel:    'Send to Celeste',
+    actionIcon:     '💬',
+    _triggerLoad:   null,
+    _filterBtnEl:   null,
   };
 
   // ── Tab data extraction ─────────────────────────────────────────────────────
@@ -436,10 +454,10 @@ const CorporateTree = (() => {
     if (tabId === 'tree') {
       renderTree(treeEl, getTreeRoots());
     } else {
-      // Filter only applies to tree tab
       filterBarEl.classList.add('hidden');
       renderTabContent(treeEl, state._tabData[tabId] || []);
     }
+    updateFilterBtn();
   }
 
   // ── Checkbox dropdown ───────────────────────────────────────────────────────
@@ -553,6 +571,16 @@ const CorporateTree = (() => {
     return buildTree(state.nodes.filter(n => ids.has(n.id)));
   }
 
+  function updateFilterBtn() {
+    const btn     = state._filterBtnEl;
+    const toolbar = btn && btn.closest('.ct-tree-toolbar');
+    if (!btn) return;
+    const onTree = state.activeTab === 'tree' && !!state._loadedPartyId;
+    toolbar.classList.toggle('hidden', !onTree);
+    btn.classList.toggle('active', !!state._filterNodeId);
+    btn.textContent = state._filterNodeId ? 'Clear Filter' : 'Filter to Party';
+  }
+
   function applyFilter(nodeId, treeEl, filterBarEl) {
     state._filterNodeId = nodeId;
     state.collapsed.clear();
@@ -561,6 +589,7 @@ const CorporateTree = (() => {
     const node = state._nodeMap[nodeId];
     filterBarEl.querySelector('.ct-filter-name').textContent = node ? node.name : nodeId;
     filterBarEl.classList.remove('hidden');
+    updateFilterBtn();
   }
 
   function clearFilter(treeEl, filterBarEl) {
@@ -568,6 +597,7 @@ const CorporateTree = (() => {
     filterBarEl.classList.add('hidden');
     renderTree(treeEl, getTreeRoots());
     updateSelBar();
+    updateFilterBtn();
   }
 
   // ── Misc ─────────────────────────────────────────────────────────────────────
@@ -606,6 +636,12 @@ const CorporateTree = (() => {
           <div class="ct-tree-meta" id="ct-tree-meta"></div>
         </div>
         <div class="ct-tabs hidden" id="ct-tabs"></div>
+        <div class="ct-tree-toolbar hidden" id="ct-tree-toolbar">
+          <button class="ct-filter-party-btn" id="ct-filter-party-btn"
+            title="Filter tree to the party's parent and children relationships only">
+            Filter to Party
+          </button>
+        </div>
         <div class="ct-filter-bar hidden" id="ct-filter-bar">
           <span class="ct-filter-label">Filtered: <span class="ct-filter-name"></span></span>
           <button class="ct-filter-clear" id="ct-filter-clear">✕ Clear</button>
@@ -621,8 +657,10 @@ const CorporateTree = (() => {
         </div>
       </div>`;
 
-    const partyNameEl = document.getElementById('ct-party-name');
-    const treeMetaEl  = document.getElementById('ct-tree-meta');
+    const partyNameEl    = document.getElementById('ct-party-name');
+    const treeMetaEl     = document.getElementById('ct-tree-meta');
+    const filterPartyBtn = document.getElementById('ct-filter-party-btn');
+    state._filterBtnEl   = filterPartyBtn;
     const statusEl    = document.getElementById('ct-status');
     const treeEl      = document.getElementById('ct-tree');
     const tabsEl      = document.getElementById('ct-tabs');
@@ -631,6 +669,14 @@ const CorporateTree = (() => {
 
     document.getElementById('ct-filter-clear').addEventListener('click', () => {
       clearFilter(treeEl, filterBarEl);
+    });
+
+    filterPartyBtn.addEventListener('click', () => {
+      if (state._filterNodeId) {
+        clearFilter(treeEl, filterBarEl);
+      } else if (state._loadedPartyId) {
+        applyFilter(state._loadedPartyId, treeEl, filterBarEl);
+      }
     });
 
     async function load(partyId, rawData) {
@@ -647,9 +693,11 @@ const CorporateTree = (() => {
       filterBarEl.classList.add('hidden');
       state.selected.clear();
       state.collapsed.clear();
-      state.activeTab     = 'tree';
-      state._filterNodeId = null;
+      state.activeTab      = 'tree';
+      state._filterNodeId  = null;
+      state._loadedPartyId = null;
       updateSelBar();
+      updateFilterBtn();
 
       try {
         let result;
@@ -691,8 +739,10 @@ const CorporateTree = (() => {
           </div>`;
         }).join('');
 
+        state._loadedPartyId = partyId;
         statusEl.textContent = `${state.nodes.length} entities`;
         renderTree(treeEl, getTreeRoots());
+        updateFilterBtn();
         if (!state._treeBound) { bindTreeEvents(treeEl, filterBarEl); state._treeBound = true; }
         if (state.onLoad) state.onLoad(state.nodes);
       } catch (err) {

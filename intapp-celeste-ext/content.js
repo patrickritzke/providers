@@ -233,6 +233,9 @@
   window.__celeste = window.__celeste || {};
   window.__celeste.openDrawer = openDrawer;
 
+  // When the tree modal closes, reset so next drawer open re-mounts the tree
+  document.addEventListener('celeste:tree-modal-closed', () => { treeMounted = false; });
+
   // Listen for tree trigger messages from the Celeste iframe receiver.
   // Pre-fetch the corporate tree before opening — drawer only appears on success.
   window.addEventListener('message', (event) => {

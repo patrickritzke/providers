@@ -1,13 +1,12 @@
 /* =====================================================================
- * form-helper.js — "Add from Tree" button on the grdTree question
+ * form-helper.js — tree-icon modal for the grdTree question
  *
- * Injects a tree-icon button next to the native "Add Row" button on
- * the grdTree MultiColumnListInput question. Clicking it opens the
- * Celeste tree panel. When the user selects entities and clicks
- * "Add to Request Grid", content.js calls
- * window.__formHelper.onEntitiesSelected(entities), which GETs the
- * current answer, merges new rows (name + bbgId + bbgIdParent only),
- * and POSTs back via the Intapp answers API.
+ * Replaces the native "Add Row" button on the grdTree question with a
+ * tree-icon button. Clicking opens a self-contained modal that mounts
+ * CorporateTree. Selecting entities and clicking "Add to Request Grid"
+ * GETs the current answer, merges new rows, and POSTs via the Intapp
+ * answers API. Modal close dispatches 'celeste:tree-modal-closed' so
+ * content.js can re-mount the tree into the Celeste drawer on next open.
  * ===================================================================== */
 
 (function () {
@@ -19,8 +18,9 @@
   const CORP_TREE_Q_ID  = '19e1833affc-23c-c26130206d';
   const CORP_TREE_Q_SEL = `[data-question-id="${CORP_TREE_Q_ID}"]`;
   const BTN_MARKER      = 'celeste-add-row-btn';
+  const MODAL_TREE_ROOT = 'celeste-modal-tree-root';
 
-  const TREE_ICON = `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+  const TREE_ICON = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
     <rect x="7" y="1" width="6" height="4" rx="1"/>
     <line x1="10" y1="5" x2="10" y2="8"/>
     <line x1="4"  y1="8" x2="16" y2="8"/>
@@ -32,7 +32,9 @@
     <rect x="13" y="11" width="6" height="4" rx="1"/>
   </svg>`;
 
-  // ── Helpers ─────────────────────────────────────────────────────────────
+  const CLOSE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
+  // ── API helpers ──────────────────────────────────────────────────────────
 
   function getRequestId() {
     const m = window.location.pathname.match(/\/requests\/(\d+)/);
@@ -73,8 +75,6 @@
     return rows;
   }
 
-  // Append only entities not already present (dedup by bbgId).
-  // Returns merged SimpleXml string, or null if nothing to add.
   function mergeIntoXml(existingXml, entities) {
     const existing    = parseExistingRows(existingXml);
     const existingIds = new Map(existing.map(r => [r.bbgId, r.rowId]));
@@ -82,7 +82,6 @@
     const toAdd = entities.filter(e => !existingIds.has(e.id));
     if (!toAdd.length) return null;
 
-    // Topological sort so parents precede children within the new batch
     const addSet  = new Set(toAdd.map(e => e.id));
     const sorted  = [];
     const visited = new Set();
@@ -134,7 +133,6 @@
 
       const host = appHost.replace(/\/+$/, '');
 
-      // GET all answers so we can find grdTree by questionId
       let answerId    = null;
       let questionName = null;
       let existingXml  = null;
@@ -190,12 +188,133 @@
     },
   };
 
-  // ── Button injection ─────────────────────────────────────────────────────
+  // ── Modal ────────────────────────────────────────────────────────────────
+
+  function openTreeModal() {
+    if (document.getElementById('celeste-tree-modal')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'celeste-tree-modal';
+    overlay.style.cssText = [
+      'position:fixed;inset:0;z-index:2147483640',
+      'background:rgba(15,23,42,0.45)',
+      'display:flex;align-items:center;justify-content:center',
+    ].join(';');
+
+    const modal = document.createElement('div');
+    modal.style.cssText = [
+      'width:480px;height:640px',
+      'background:#fff;border-radius:12px',
+      'box-shadow:0 24px 64px rgba(0,0,0,0.28)',
+      'display:flex;flex-direction:column;overflow:hidden',
+    ].join(';');
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between',
+      'padding:11px 14px;flex-shrink:0',
+      'background:linear-gradient(135deg,#1e293b,#334155)',
+      'border-bottom:1px solid rgba(255,255,255,0.08)',
+    ].join(';');
+    header.innerHTML = `<span style="color:#fff;font-size:13px;font-weight:600;letter-spacing:0.1px;">Corporate Tree</span>`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = CLOSE_ICON;
+    closeBtn.title = 'Close';
+    closeBtn.style.cssText = [
+      'background:none;border:none;cursor:pointer;padding:4px',
+      'color:rgba(255,255,255,0.6);display:flex;align-items:center',
+      'border-radius:4px;transition:color 0.15s',
+    ].join(';');
+    closeBtn.addEventListener('mouseenter', () => { closeBtn.style.color = '#fff'; });
+    closeBtn.addEventListener('mouseleave', () => { closeBtn.style.color = 'rgba(255,255,255,0.6)'; });
+    header.appendChild(closeBtn);
+
+    // Party ID bar
+    const partyBar = document.createElement('div');
+    partyBar.style.cssText = 'display:flex;gap:7px;padding:8px 10px;border-bottom:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;';
+
+    const partyInput = document.createElement('input');
+    partyInput.type = 'text';
+    partyInput.placeholder = 'Party ID (e.g. 1764)';
+    partyInput.autocomplete = 'off';
+    partyInput.style.cssText = [
+      'flex:1;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px',
+      'font-size:12px;font-family:inherit;color:#1e293b;background:#fff;outline:none',
+    ].join(';');
+    partyInput.addEventListener('focus', () => { partyInput.style.borderColor = '#6366f1'; });
+    partyInput.addEventListener('blur',  () => { partyInput.style.borderColor = '#e2e8f0'; });
+
+    const loadBtn = document.createElement('button');
+    loadBtn.textContent = 'Load';
+    loadBtn.style.cssText = [
+      'padding:6px 14px;border-radius:6px;border:none;white-space:nowrap',
+      'background:linear-gradient(135deg,#6366f1,#8b5cf6)',
+      'color:#fff;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer',
+    ].join(';');
+
+    partyBar.appendChild(partyInput);
+    partyBar.appendChild(loadBtn);
+
+    // Tree root
+    const treeRoot = document.createElement('div');
+    treeRoot.id = MODAL_TREE_ROOT;
+    treeRoot.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;';
+
+    modal.appendChild(header);
+    modal.appendChild(partyBar);
+    modal.appendChild(treeRoot);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    function closeModal() {
+      overlay.remove();
+      // Let content.js know the tree is free to be re-mounted in the Celeste drawer
+      document.dispatchEvent(new CustomEvent('celeste:tree-modal-closed'));
+    }
+
+    closeBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', function onEsc(e) {
+      if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', onEsc); }
+    });
+
+    // Mount corporate tree into modal
+    window.CorporateTree.mount(`#${MODAL_TREE_ROOT}`, {
+      actionLabel: 'Add to Request Grid',
+      onSelect: ({ entities }) => {
+        window.__formHelper.onEntitiesSelected(entities);
+        closeModal();
+      },
+    });
+
+    function triggerLoad() {
+      const id = partyInput.value.trim();
+      if (!id) return;
+      loadBtn.disabled = true;
+      loadBtn.textContent = 'Loading…';
+      window.CorporateTree.loadParty(id);
+      setTimeout(() => { loadBtn.disabled = false; loadBtn.textContent = 'Load'; }, 3000);
+    }
+    loadBtn.addEventListener('click', triggerLoad);
+    partyInput.addEventListener('keydown', e => { if (e.key === 'Enter') triggerLoad(); });
+    setTimeout(() => partyInput.focus(), 50);
+  }
+
+  // ── Button injection (replaces native "Add Row") ─────────────────────────
 
   function injectBtn(questionEl) {
-    if (questionEl.querySelector(`.${BTN_MARKER}`)) return;
-    const nativeBtn = questionEl.querySelector('button.button.tertiary');
+    const nativeBtn = questionEl.querySelector('button.button.tertiary:not(.celeste-add-row-btn)');
+
+    // Keep native hidden whenever our button is present
+    if (questionEl.querySelector(`.${BTN_MARKER}`)) {
+      if (nativeBtn) nativeBtn.style.display = 'none';
+      return;
+    }
     if (!nativeBtn) return;
+
+    nativeBtn.style.display = 'none';
 
     const btn = document.createElement('button');
     btn.type      = 'button';
@@ -207,10 +326,10 @@
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      window.__celeste?.openDrawer();
+      openTreeModal();
     });
 
-    nativeBtn.parentElement.insertBefore(btn, nativeBtn.nextSibling);
+    nativeBtn.parentElement.insertBefore(btn, nativeBtn);
   }
 
   (function watchQuestion() {

@@ -292,6 +292,7 @@ const CorporateTree = (() => {
     _loadedPartyId: null,
     _treeBound:     false,
     onSelect:       null,
+    onChange:       null,
     onLoad:         null,
     actionLabel:    'Send to Celeste',
     actionIcon:     '💬',
@@ -616,13 +617,31 @@ const CorporateTree = (() => {
   }
 
   // ── Misc ─────────────────────────────────────────────────────────────────────
+  function getSelectedEntities() {
+    const nodeMap = {};
+    state.nodes.forEach(n => { nodeMap[n.id] = n; });
+    const sectionItems = state._sectionItems || {};
+    return [...state.selected].map(id => {
+      if (nodeMap[id]) {
+        const n = nodeMap[id];
+        return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode, parentId: n.parentId || null };
+      }
+      if (sectionItems[id]) {
+        const s = sectionItems[id];
+        return { id: s.id, name: s.name, meta: s.meta, _section: s._section };
+      }
+      return null;
+    }).filter(Boolean);
+  }
+
   function updateSelBar() {
-    const bar    = document.querySelector('.ct-sel-bar');
+    const bar     = document.querySelector('.ct-sel-bar');
     const countEl = document.querySelector('.ct-sel-count');
     if (!bar) return;
     const n = state.selected.size;
-    bar.classList.toggle('visible', n > 0);
+    bar.classList.toggle('visible', n > 0 || !!state.actionLabel);
     if (countEl) countEl.innerHTML = `<strong>${n}</strong> selected`;
+    if (state.onChange) state.onChange(getSelectedEntities());
   }
 
   function esc(s) {
@@ -635,8 +654,9 @@ const CorporateTree = (() => {
     if (!root) { console.error('[CorporateTree] mount target not found:', selector); return; }
 
     state.onSelect    = opts.onSelect    || null;
+    state.onChange    = opts.onChange    || null;
     state.onLoad      = opts.onLoad      || null;
-    state.actionLabel = opts.actionLabel || 'Send to Celeste';
+    state.actionLabel = 'actionLabel' in opts ? opts.actionLabel : 'Send to Celeste';
     state.actionIcon  = opts.actionIcon  || '💬';
     state.selected.clear();
     state.collapsed.clear();
@@ -775,23 +795,11 @@ const CorporateTree = (() => {
 
     state._triggerLoad = (partyId, rawData) => load(partyId, rawData);
 
+    actionBtn.style.display = state.actionLabel ? '' : 'none';
+
     actionBtn.addEventListener('click', () => {
       if (!state.onSelect) return;
-      const nodeMap      = {};
-      state.nodes.forEach(n => { nodeMap[n.id] = n; });
-      const sectionItems = state._sectionItems || {};
-      const entities = [...state.selected].map(id => {
-        if (nodeMap[id]) {
-          const n = nodeMap[id];
-          return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode, parentId: n.parentId || null };
-        }
-        if (sectionItems[id]) {
-          const s = sectionItems[id];
-          return { id: s.id, name: s.name, meta: s.meta, _section: s._section };
-        }
-        return null;
-      }).filter(Boolean);
-      state.onSelect({ entities, actionLabel: state.actionLabel });
+      state.onSelect({ entities: getSelectedEntities(), actionLabel: state.actionLabel });
     });
   }
 

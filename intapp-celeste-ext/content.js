@@ -121,8 +121,6 @@
   }
 
   /* ---------------- Celeste SDK context helpers ---------------- */
-  const _entityContext = new Map(); // id → entity, accumulates across selections
-
   function setCelesteContext(title, context) {
     if (window.CelesteSDK?.setContext) {
       window.CelesteSDK.setContext({ title, context });
@@ -148,27 +146,15 @@
       treeMounted = true;
       window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {},
-        onSelect: ({ entities }) => {
-          // Merge into the running accumulator so repeated selections are additive
-          entities.forEach(e => _entityContext.set(e.id, e));
-          const all   = [..._entityContext.values()];
-          const lines = all.map(e => `- ${e.name} (${e.id}${e.countryCode ? ', ' + e.countryCode : ''})`).join('\n');
-          const title = `Corporate entities (${all.length})`;
-          // Prefer SDK context injection; fall back to chat message
-          if (!setCelesteContext(title, lines)) {
-            const frame = drawerRoot && drawerRoot.querySelector('.celeste-iframe');
-            if (!frame || !frame.contentWindow) return;
-            try {
-              frame.contentWindow.postMessage(
-                { type: 'CELESTE_PASTE_AND_SEND', text: `${title}:\n${lines}` },
-                CELESTE_ORIGIN
-              );
-            } catch (e) {
-              console.warn('[Celeste] tree entity postMessage failed', e);
-            }
+        onChange: (entities) => {
+          if (!entities.length) {
+            if (window.CelesteSDK?.clearContext) window.CelesteSDK.clearContext();
+            return;
           }
+          const lines = entities.map(e => `- ${e.name} (${e.id}${e.countryCode ? ', ' + e.countryCode : ''})`).join('\n');
+          setCelesteContext(`Corporate entities (${entities.length})`, lines);
         },
-        actionLabel: 'Send to Celeste',
+        actionLabel: null,
         actionIcon: '💬',
       });
     }

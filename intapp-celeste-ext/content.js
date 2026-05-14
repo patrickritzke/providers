@@ -155,7 +155,7 @@
             console.warn('[Celeste] tree entity postMessage failed', e);
           }
         },
-        actionLabel: 'Send to Celeste',
+        actionLabel: 'Add to Form',
         actionIcon: '💬',
       });
     }

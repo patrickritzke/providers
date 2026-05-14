@@ -783,7 +783,7 @@ const CorporateTree = (() => {
       const entities = [...state.selected].map(id => {
         if (nodeMap[id]) {
           const n = nodeMap[id];
-          return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode };
+          return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode, parentId: n.parentId || null };
         }
         if (sectionItems[id]) {
           const s = sectionItems[id];

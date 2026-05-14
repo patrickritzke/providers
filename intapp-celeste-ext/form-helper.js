@@ -1,12 +1,10 @@
 /* =====================================================================
- * form-helper.js — Intapp intake form enhancements
+ * form-helper.js — Intapp intake form: tree → grdTree API write
  *
- * Injects helper buttons into specific form questions.
- * Currently: "Add from Tree" on the Corporate Tree table question.
- *
- * Architecture note: this file only handles DOM injection. Entity
- * selection data flows in via window.__formHelper.onEntitiesSelected(),
- * which content.js calls when the user acts on tree-panel selections.
+ * Exposes window.__formHelper.onEntitiesSelected(entities), called by
+ * content.js when the user clicks "Add to Form" in the tree panel.
+ * Writes selected entities directly to the grdTree MultiColumnListInput
+ * via POST /api/api/intake/v1/requests/{id}/answers.
  * ===================================================================== */
 
 (function () {
@@ -15,101 +13,126 @@
   if (window.__formHelperInjected) return;
   window.__formHelperInjected = true;
 
-  // Question ID for the Corporate Tree MultiColumnListInput question.
-  // If this changes between environments, check the data-question-id
-  // attribute on the question element and update here.
-  const CORP_TREE_Q_ID = '19692e5e843-22c-161ed376d1c';
-  const CORP_TREE_Q_SEL = `[data-question-id="${CORP_TREE_Q_ID}"]`;
-  const BTN_MARKER = 'celeste-add-row-btn';
+  const GRID_Q_NAME = 'grdTree';
 
-  // ── Public API — called by content.js when tree entities are selected ──
-  let _pendingEntities = null;
-  window.__formHelper = {
-    onEntitiesSelected(entities) {
-      _pendingEntities = entities;
-      // If the drawer is already open, pre-fill it immediately.
-      // Otherwise the entities are stored and applied when the drawer opens.
-      tryPrefillDrawer();
-    },
-  };
-
-  // ── Drawer pre-fill ─────────────────────────────────────────────────────
-  function tryPrefillDrawer() {
-    if (!_pendingEntities?.length) return;
-    const drawerContent = document.querySelector(
-      `.drawer-grid-content[data-question-id="${CORP_TREE_Q_ID}"]`
-    );
-    if (!drawerContent) return;
-
-    // TODO: map entity fields to drawer inputs once the field selectors
-    // are known (Name, Alias, ID, Client ID). For now, log so it's easy
-    // to inspect and wire up.
-    console.log('[form-helper] drawer open with entities ready:', _pendingEntities);
-    _pendingEntities = null;
+  function getRequestId() {
+    const m = window.location.pathname.match(/\/requests\/(\d+)/);
+    return m ? m[1] : null;
   }
 
-  // ── Button injection ────────────────────────────────────────────────────
-  function injectBtn(questionEl) {
-    if (questionEl.querySelector(`.${BTN_MARKER}`)) return;
+  function storageGet(keys) {
+    return new Promise(r => chrome.storage.local.get(keys, r));
+  }
 
-    // The native "Add Row" button is inside app-grid-header.
-    // It carries the Intapp "button tertiary" classes.
-    const nativeBtn = questionEl.querySelector('button.button.tertiary');
-    if (!nativeBtn) return;
+  function xmlEsc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `button tertiary ${BTN_MARKER}`;
-    btn.textContent = 'Add from Tree';
-    btn.title = 'Open the row editor (pre-fills from tree selection when entities are selected)';
+  // Build the SimpleXml grid from a flat entity list.
+  // Entities: { id (bbgId), name, parentId (parent bbgId or null) }
+  // RowId is sequential; ParentRowId references the parent row's RowId
+  // (empty when the parent isn't in the selection); bbgIdParent is always
+  // the raw parent bbgId regardless of whether the parent is selected.
+  function buildXml(entities) {
+    const idSet = new Set(entities.map(e => e.id));
 
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      nativeBtn.click();
-      // If entities were pre-selected in the tree panel, try to fill
-      // the drawer once Angular finishes rendering its form fields.
-      if (_pendingEntities?.length) {
-        setTimeout(tryPrefillDrawer, 300);
+    // Topological sort so parents always precede their children
+    const sorted = [];
+    const visited = new Set();
+    function visit(e) {
+      if (visited.has(e.id)) return;
+      if (e.parentId && idSet.has(e.parentId)) {
+        const parent = entities.find(x => x.id === e.parentId);
+        if (parent) visit(parent);
       }
-    });
+      visited.add(e.id);
+      sorted.push(e);
+    }
+    entities.forEach(e => visit(e));
 
-    nativeBtn.parentElement.insertBefore(btn, nativeBtn.nextSibling);
+    const rowIdOf = {};
+    sorted.forEach((e, i) => { rowIdOf[e.id] = i; });
+
+    const rows = sorted.map((e, i) => {
+      const parentRowId = (e.parentId != null && rowIdOf[e.parentId] !== undefined)
+        ? rowIdOf[e.parentId] : '';
+      return `<GridRow>` +
+        `<RowId>${i}</RowId>` +
+        `<ParentRowId>${parentRowId}</ParentRowId>` +
+        `<Question><Name>chkRestrict</Name><Value>False</Value></Question>` +
+        `<Question><Name>name</Name><Value>${xmlEsc(e.name)}</Value></Question>` +
+        `<Question><Name>bbgId</Name><Value>${xmlEsc(e.id)}</Value></Question>` +
+        `<Question><Name>bbgIdParent</Name><Value>${xmlEsc(e.parentId || '')}</Value></Question>` +
+        `<Question><Name></Name><Value></Value></Question>` +
+        `</GridRow>`;
+    }).join('');
+
+    return `<Grid>${rows}</Grid>`;
   }
 
-  // ── Persistent watcher ─────────────────────────────────────────────────
-  // Angular re-renders app-grid-header on change detection, wiping the
-  // injected button. The debounced MutationObserver re-injects it.
-  (function watchQuestion() {
-    let scheduled = false;
+  window.__formHelper = {
+    async onEntitiesSelected(entities) {
+      if (!entities?.length) return;
 
-    function tryInject() {
-      const questionEl = document.querySelector(CORP_TREE_Q_SEL);
-      if (questionEl) injectBtn(questionEl);
-    }
-
-    function schedule() {
-      if (scheduled) return;
-      scheduled = true;
-      setTimeout(() => {
-        scheduled = false;
-        try { tryInject(); } catch (_) {}
-      }, 200);
-    }
-
-    tryInject();
-
-    const obs = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        const t = m.target;
-        // Skip mutations caused by our own button to avoid loops
-        if (t && t.classList?.contains(BTN_MARKER)) continue;
-        if (t && t.closest?.(`.${BTN_MARKER}`)) continue;
-        schedule();
+      const requestId = getRequestId();
+      if (!requestId) {
+        console.error('[form-helper] Cannot extract request ID from URL:', window.location.pathname);
         return;
       }
-    });
-    obs.observe(document.documentElement, { childList: true, subtree: true });
-  })();
+
+      const stored = await storageGet(['intapp_token', 'intapp_credentials']);
+      const token   = stored.intapp_token?.accessToken || stored.intapp_token?.token;
+      const appHost = stored.intapp_credentials?.appHost;
+
+      if (!token)   { console.error('[form-helper] No Intapp token — open the Celeste popup and Save & Test.'); return; }
+      if (!appHost) { console.error('[form-helper] No Intapp appHost — open the Celeste popup and enter credentials.'); return; }
+
+      const host = appHost.replace(/\/+$/, '');
+
+      // GET current answer to retrieve answer id and questionId
+      let answerId   = null;
+      let questionId = null;
+      try {
+        const getRes = await fetch(
+          `https://${host}/api/api/intake/v1/requests/${requestId}?questionNames=${GRID_Q_NAME}`,
+          { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+        );
+        if (getRes.ok) {
+          const data   = await getRes.json();
+          const answer = data.answers?.find(a => a.questionName === GRID_Q_NAME);
+          if (answer) { answerId = answer.id; questionId = answer.questionId; }
+        }
+      } catch (e) {
+        console.warn('[form-helper] GET answer failed:', e.message);
+      }
+
+      const xml  = buildXml(entities);
+      const body = [Object.assign(
+        { questionName: GRID_Q_NAME, answerType: 'DataTable', dataTableSimpleXmlAnswer: xml },
+        answerId   != null ? { id: answerId }  : {},
+        questionId != null ? { questionId }    : {}
+      )];
+
+      console.log('[form-helper] POSTing', entities.length, 'entities to grdTree on request', requestId);
+      try {
+        const postRes = await fetch(
+          `https://${host}/api/api/intake/v1/requests/${requestId}/answers`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }
+        );
+        if (postRes.ok) {
+          console.log('[form-helper] grdTree updated —', entities.length, 'rows written');
+        } else {
+          const err = await postRes.text();
+          console.error('[form-helper] POST failed', postRes.status, err.slice(0, 300));
+        }
+      } catch (e) {
+        console.error('[form-helper] POST error:', e.message);
+      }
+    },
+  };
 
 })();

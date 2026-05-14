@@ -28,46 +28,77 @@
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // Build the SimpleXml grid from a flat entity list.
-  // Entities: { id (bbgId), name, parentId (parent bbgId or null) }
-  // RowId is sequential; ParentRowId references the parent row's RowId
-  // (empty when the parent isn't in the selection); bbgIdParent is always
-  // the raw parent bbgId regardless of whether the parent is selected.
-  function buildXml(entities) {
-    const idSet = new Set(entities.map(e => e.id));
+  function makeGridRow(rowId, parentRowId, entity) {
+    return `<GridRow>` +
+      `<RowId>${rowId}</RowId>` +
+      `<ParentRowId>${parentRowId}</ParentRowId>` +
+      `<Question><Name>chkRestrict</Name><Value>False</Value></Question>` +
+      `<Question><Name>name</Name><Value>${xmlEsc(entity.name)}</Value></Question>` +
+      `<Question><Name>bbgId</Name><Value>${xmlEsc(entity.id)}</Value></Question>` +
+      `<Question><Name>bbgIdParent</Name><Value>${xmlEsc(entity.parentId || '')}</Value></Question>` +
+      `<Question><Name></Name><Value></Value></Question>` +
+      `</GridRow>`;
+  }
 
-    // Topological sort so parents always precede their children
-    const sorted = [];
-    const visited = new Set();
+  // Parse existing GridRows from SimpleXml, returning
+  // { rowId, bbgId, raw } for each row.
+  function parseExistingRows(xml) {
+    if (!xml) return [];
+    const rows = [];
+    const re = /<GridRow>([\s\S]*?)<\/GridRow>/g;
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+      const inner  = m[1];
+      const rowId  = parseInt((inner.match(/<RowId>(\d+)<\/RowId>/) || [])[1] ?? '-1');
+      const bbgIdM = inner.match(/<Question><Name>bbgId<\/Name><Value>([^<]*)<\/Value><\/Question>/);
+      rows.push({ rowId, bbgId: bbgIdM ? bbgIdM[1] : '', raw: m[0] });
+    }
+    return rows;
+  }
+
+  // Merge new entities into existing rows (append only, skip duplicates by bbgId).
+  // Returns complete SimpleXml string.
+  function mergeIntoXml(existingXml, entities) {
+    const existing    = parseExistingRows(existingXml);
+    const existingIds = new Map(existing.map(r => [r.bbgId, r.rowId]));
+
+    // Only add entities not already present
+    const toAdd = entities.filter(e => !existingIds.has(e.id));
+    if (!toAdd.length) return null; // nothing to do
+
+    // Topological sort so parents precede children within the new batch
+    const addSet   = new Set(toAdd.map(e => e.id));
+    const sorted   = [];
+    const visited  = new Set();
     function visit(e) {
       if (visited.has(e.id)) return;
-      if (e.parentId && idSet.has(e.parentId)) {
-        const parent = entities.find(x => x.id === e.parentId);
+      if (e.parentId && addSet.has(e.parentId)) {
+        const parent = toAdd.find(x => x.id === e.parentId);
         if (parent) visit(parent);
       }
       visited.add(e.id);
       sorted.push(e);
     }
-    entities.forEach(e => visit(e));
+    toAdd.forEach(e => visit(e));
 
-    const rowIdOf = {};
-    sorted.forEach((e, i) => { rowIdOf[e.id] = i; });
+    // New RowIds start after the highest existing RowId
+    let nextRowId = existing.length
+      ? Math.max(...existing.map(r => r.rowId)) + 1
+      : 0;
+    const newRowIdOf = {};
+    sorted.forEach(e => { newRowIdOf[e.id] = nextRowId++; });
 
-    const rows = sorted.map((e, i) => {
-      const parentRowId = (e.parentId != null && rowIdOf[e.parentId] !== undefined)
-        ? rowIdOf[e.parentId] : '';
-      return `<GridRow>` +
-        `<RowId>${i}</RowId>` +
-        `<ParentRowId>${parentRowId}</ParentRowId>` +
-        `<Question><Name>chkRestrict</Name><Value>False</Value></Question>` +
-        `<Question><Name>name</Name><Value>${xmlEsc(e.name)}</Value></Question>` +
-        `<Question><Name>bbgId</Name><Value>${xmlEsc(e.id)}</Value></Question>` +
-        `<Question><Name>bbgIdParent</Name><Value>${xmlEsc(e.parentId || '')}</Value></Question>` +
-        `<Question><Name></Name><Value></Value></Question>` +
-        `</GridRow>`;
-    }).join('');
+    const newRows = sorted.map(e => {
+      let parentRowId = '';
+      if (e.parentId != null) {
+        if (existingIds.has(e.parentId))       parentRowId = existingIds.get(e.parentId);
+        else if (newRowIdOf[e.parentId] != null) parentRowId = newRowIdOf[e.parentId];
+      }
+      return makeGridRow(newRowIdOf[e.id], parentRowId, e);
+    });
 
-    return `<Grid>${rows}</Grid>`;
+    const allRows = existing.map(r => r.raw).concat(newRows).join('');
+    return `<Grid>${allRows}</Grid>`;
   }
 
   window.__formHelper = {
@@ -89,9 +120,10 @@
 
       const host = appHost.replace(/\/+$/, '');
 
-      // GET current answer to retrieve answer id and questionId
-      let answerId   = null;
-      let questionId = null;
+      // GET current answer to retrieve existing rows, answer id, and questionId
+      let answerId    = null;
+      let questionId  = null;
+      let existingXml = null;
       try {
         const getRes = await fetch(
           `https://${host}/api/api/intake/v1/requests/${requestId}?questionNames=${GRID_Q_NAME}`,
@@ -100,13 +132,22 @@
         if (getRes.ok) {
           const data   = await getRes.json();
           const answer = data.answers?.find(a => a.questionName === GRID_Q_NAME);
-          if (answer) { answerId = answer.id; questionId = answer.questionId; }
+          if (answer) {
+            answerId    = answer.id;
+            questionId  = answer.questionId;
+            existingXml = answer.dataTableSimpleXmlAnswer || null;
+          }
         }
       } catch (e) {
         console.warn('[form-helper] GET answer failed:', e.message);
       }
 
-      const xml  = buildXml(entities);
+      const xml = mergeIntoXml(existingXml, entities);
+      if (!xml) {
+        console.log('[form-helper] all selected entities already in grid — nothing to add');
+        return;
+      }
+
       const body = [Object.assign(
         { questionName: GRID_Q_NAME, answerType: 'DataTable', dataTableSimpleXmlAnswer: xml },
         answerId   != null ? { id: answerId }  : {},

@@ -43,7 +43,7 @@
   // ── API helpers ──────────────────────────────────────────────────────────
 
   function getRequestId() {
-    const m = window.location.pathname.match(/\/requests\/(\d+)/);
+    const m = (window.location.pathname + window.location.hash).match(/\/requests\/(\d+)/);
     return m ? m[1] : null;
   }
 

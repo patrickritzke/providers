@@ -515,12 +515,26 @@ const CorporateTree = (() => {
     if (!options.length) return;
 
     const dropdown = document.createElement('div');
-    dropdown.className = 'ct-dropdown';
+    Object.assign(dropdown.style, {
+      position: 'fixed', zIndex: '2147483647',
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: '7px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+      minWidth: '190px', padding: '4px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontSize: '12px',
+    });
+
     for (const opt of options) {
       const item = document.createElement('div');
-      item.className = 'ct-dropdown-item';
       item.textContent = opt.label;
-      item.addEventListener('click', e => {
+      Object.assign(item.style, {
+        padding: '8px 14px', borderRadius: '4px',
+        cursor: 'pointer', color: '#1e293b', whiteSpace: 'nowrap',
+      });
+      item.addEventListener('mouseenter', () => Object.assign(item.style, { background: '#eef2ff', color: '#6366f1' }));
+      item.addEventListener('mouseleave', () => Object.assign(item.style, { background: '', color: '#1e293b' }));
+      item.addEventListener('mousedown', e => {
+        e.preventDefault(); // keep focus, prevent blur-before-click
         e.stopPropagation();
         opt.action();
         dropdown.remove();
@@ -533,9 +547,9 @@ const CorporateTree = (() => {
     dropdown.style.top  = (rect.bottom + 2) + 'px';
     dropdown.style.left = rect.left + 'px';
 
-    requestAnimationFrame(() => {
-      document.addEventListener('click', () => dropdown.remove(), { once: true });
-    });
+    // Close on next click outside
+    const close = e => { if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', close); } };
+    requestAnimationFrame(() => document.addEventListener('click', close));
   }
 
   function selectAllDescendants(node) {

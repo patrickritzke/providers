@@ -140,7 +140,7 @@
       window.CorporateTree.mount('#celeste-tree-root', {
         onLoad: () => {},
         onSelect: ({ entities, actionLabel }) => {
-          if (actionLabel === 'Add to Form' && window.__formHelper) {
+          if (actionLabel === 'Add to Request Grid' && window.__formHelper) {
             window.__formHelper.onEntitiesSelected(entities);
             return;
           }
@@ -155,7 +155,7 @@
             console.warn('[Celeste] tree entity postMessage failed', e);
           }
         },
-        actionLabel: 'Add to Form',
+        actionLabel: 'Add to Request Grid',
         actionIcon: '💬',
       });
     }

@@ -134,8 +134,14 @@
   function setCelesteContext(title, context) {
     if (!celesteFrame?.contentWindow) return false;
     try {
+      // Try silent SDK context first
       celesteFrame.contentWindow.postMessage(
         { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_CONTEXT', payload: { title, context } },
+        CELESTE_ORIGIN
+      );
+      // Fallback: also send as chat message in case /celeste/app ignores SDK context
+      celesteFrame.contentWindow.postMessage(
+        { type: 'CELESTE_PASTE_AND_SEND', text: `CONTEXT — ${title}: ${context}` },
         CELESTE_ORIGIN
       );
       return true;

@@ -62,28 +62,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // ── Celeste IDM session token (for /sdk/chat iframe auth) ────────────────
   if (msg.type === 'FETCH_CELESTE_TOKEN') {
     const { celesteOrigin } = msg;
-    const url = new URL(celesteOrigin);
 
-    // Read the NextAuth session cookie for the Celeste origin, then attach it
-    // manually — avoids the credentials:include + wildcard ACAO conflict.
-    chrome.cookies.getAll({ url: `${celesteOrigin}/` }, (cookies) => {
-      const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-      console.log('[Celeste-bg] cookies for', celesteOrigin, ':', cookies.map(c => c.name));
-      fetch(`${celesteOrigin}/celeste/api/auth/session`, {
+    // AUTH_SESSION_ID is the Keycloak session cookie — may live on the IDM
+    // domain (idmeu.my.intapp.com) or the Celeste origin itself.
+    const idmOrigin = 'https://idmeu.my.intapp.com';
+    Promise.all([
+      new Promise(r => chrome.cookies.getAll({ url: `${celesteOrigin}/` }, r)),
+      new Promise(r => chrome.cookies.getAll({ url: `${idmOrigin}/` }, r)),
+    ]).then(([celesteCookies, idmCookies]) => {
+      const all = [...celesteCookies, ...idmCookies];
+      console.log('[Celeste-bg] all cookies:', all.map(c => c.name));
+      const cookieHeader = all.map(c => `${c.name}=${c.value}`).join('; ');
+
+      return fetch(`${celesteOrigin}/celeste/api/auth/session`, {
         headers: { Cookie: cookieHeader },
+      });
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
       })
-        .then(r => {
-          if (!r.ok) throw new Error(`${r.status}`);
-          return r.json();
-        })
-        .then(data => {
-          console.log('[Celeste-bg] session keys:', Object.keys(data));
-          const token = data.token || data.accessToken || data.idmToken || data.access_token;
-          if (token) sendResponse({ ok: true, token });
-          else sendResponse({ ok: false, error: 'No token field', data });
-        })
-        .catch(err => sendResponse({ ok: false, error: err.message }));
-    });
+      .then(data => {
+        console.log('[Celeste-bg] session keys:', Object.keys(data));
+        const token = data.token || data.accessToken || data.idmToken || data.access_token;
+        if (token) sendResponse({ ok: true, token });
+        else sendResponse({ ok: false, error: 'No token field', data });
+      })
+      .catch(err => sendResponse({ ok: false, error: err.message }));
     return true;
   }
 

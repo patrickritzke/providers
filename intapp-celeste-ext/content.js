@@ -269,19 +269,18 @@
 
     // Iframe asks for IDM token on load
     if (data.source === 'CelesteSDK_IFRAME' && data.type === 'CELESTE_SDK_REQUEST_TOKEN') {
-      fetch(`${CELESTE_ORIGIN}/celeste/api/auth/session`, { credentials: 'include' })
-        .then(r => r.ok ? r.json() : Promise.reject(r.status))
-        .then(session => {
-          const token = session.token || session.accessToken || session.idmToken || session.access_token;
-          console.log('[Celeste] session keys:', Object.keys(session), '| token found:', !!token);
-          if (token && celesteFrame?.contentWindow) {
+      chrome.runtime.sendMessage({ type: 'FETCH_CELESTE_TOKEN', celesteOrigin: CELESTE_ORIGIN }, (res) => {
+        if (res?.ok && celesteFrame?.contentWindow) {
+          try {
             celesteFrame.contentWindow.postMessage(
-              { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_TOKEN', payload: { token } },
+              { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_TOKEN', payload: { token: res.token } },
               CELESTE_ORIGIN
             );
-          }
-        })
-        .catch(e => console.warn('[Celeste] session fetch failed:', e));
+          } catch (_) {}
+        } else {
+          console.warn('[Celeste] failed to fetch IDM token:', res?.error, res?.data);
+        }
+      });
       return;
     }
 

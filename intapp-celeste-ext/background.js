@@ -62,18 +62,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // ── Celeste IDM session token (for /sdk/chat iframe auth) ────────────────
   if (msg.type === 'FETCH_CELESTE_TOKEN') {
     const { celesteOrigin } = msg;
-    fetch(`${celesteOrigin}/celeste/api/auth/session`, { credentials: 'include' })
-      .then(r => {
-        if (!r.ok) throw new Error(`${r.status}`);
-        return r.json();
+    const url = new URL(celesteOrigin);
+
+    // Read the NextAuth session cookie for the Celeste origin, then attach it
+    // manually — avoids the credentials:include + wildcard ACAO conflict.
+    chrome.cookies.getAll({ domain: url.hostname }, (cookies) => {
+      const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      console.log('[Celeste-bg] cookies for', url.hostname, ':', cookies.map(c => c.name));
+      fetch(`${celesteOrigin}/celeste/api/auth/session`, {
+        headers: { Cookie: cookieHeader },
       })
-      .then(data => {
-        console.log('[Celeste-bg] session response keys:', Object.keys(data));
-        const token = data.token || data.accessToken || data.idmToken || data.access_token;
-        if (token) sendResponse({ ok: true, token });
-        else sendResponse({ ok: false, error: 'No token field in response', data });
-      })
-      .catch(err => sendResponse({ ok: false, error: err.message }));
+        .then(r => {
+          if (!r.ok) throw new Error(`${r.status}`);
+          return r.json();
+        })
+        .then(data => {
+          console.log('[Celeste-bg] session keys:', Object.keys(data));
+          const token = data.token || data.accessToken || data.idmToken || data.access_token;
+          if (token) sendResponse({ ok: true, token });
+          else sendResponse({ ok: false, error: 'No token field', data });
+        })
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+    });
     return true;
   }
 

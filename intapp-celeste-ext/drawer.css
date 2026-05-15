@@ -134,29 +134,37 @@
 /* ----- backdrop --------------------------------------------------------- */
 .celeste-backdrop {
   position: fixed; inset: 0;
-  background: rgba(15, 23, 42, .25);
+  background: transparent;
   opacity: 0; pointer-events: none;
-  transition: opacity .2s ease;
-  z-index: 2147483646;
+  z-index: 999997;
 }
 .celeste-root.celeste-open .celeste-backdrop {
   opacity: 1; pointer-events: auto;
 }
 
-/* ----- drawers wrapper — flex row, slides in as one unit --------------- */
+/* ----- drawers wrapper — floating panel bottom-right ------------------- */
 .celeste-drawers {
   position: fixed;
-  top: 0; bottom: 0; right: 0;
+  bottom: 10px;
+  right: 20px;
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  transform: translateX(100%);
-  transition: transform .25s cubic-bezier(.2,.8,.2,1);
-  z-index: 2147483647;
+  height: calc(100vh - 20px);
+  border-radius: 12px;
+  box-shadow: rgba(0, 0, 0, 0.2) 0px 8px 32px;
+  overflow: hidden;
+  z-index: 999998;
+  opacity: 0;
+  transform: translateY(16px);
   pointer-events: none;
+  transition: opacity .2s ease,
+              transform .2s cubic-bezier(0.4, 0, 0.2, 1),
+              width .3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .celeste-root.celeste-open .celeste-drawers {
-  transform: translateX(0);
+  opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
@@ -166,8 +174,8 @@
   flex-shrink: 0;
   overflow: hidden;
   background: var(--c-bg);
-  border-right: 1px solid var(--c-border);
-  transition: width .25s cubic-bezier(.2,.8,.2,1);
+  border-right: 1px solid var(--c-border-2);
+  transition: width .3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 .celeste-root.celeste-tree-open .celeste-tree-drawer {
@@ -211,27 +219,19 @@
 
 /* ----- celeste drawer (right) ------------------------------------------ */
 .celeste-drawer {
-  width: 440px;
+  width: 450px;
   flex-shrink: 0;
   height: 100%;
-  background: var(--c-bg);
-  border-left: 1px solid var(--c-border);
-  box-shadow: var(--c-shadow-lg);
+  background: white;
   display: flex;
   flex-direction: column;
   position: relative;
 }
 
 .celeste-drawer.celeste-drawer--iframe {
-  width: 520px;
+  width: 450px;
   padding: 0;
   overflow: hidden;
-}
-
-/* When SDK canvas opens, widen Celeste */
-.celeste-root.celeste-canvas-open .celeste-drawer.celeste-drawer--iframe {
-  width: 50vw;
-  min-width: 720px;
 }
 
 /* Panel container for SDK-injected iframe */

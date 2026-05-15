@@ -134,12 +134,15 @@
   function setCelesteContext(title, context) {
     if (!celesteFrame?.contentWindow) return false;
     try {
-      // Try silent SDK context first
+      celesteFrame.contentWindow.postMessage(
+        { source: 'CelesteSDK', type: 'CELESTE_SDK_CLEAR_CONTEXT' },
+        CELESTE_ORIGIN
+      );
       celesteFrame.contentWindow.postMessage(
         { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_CONTEXT', payload: { title, context } },
         CELESTE_ORIGIN
       );
-      // Fallback: also send as chat message in case /celeste/app ignores SDK context
+      // Chat fallback — only sent once per unique URL
       celesteFrame.contentWindow.postMessage(
         { type: 'CELESTE_PASTE_AND_SEND', text: `CONTEXT — ${title}: ${context}` },
         CELESTE_ORIGIN
@@ -172,6 +175,7 @@
   /* ---------------- open / close ---------------- */
   let drawerRoot = null;
   let treeMounted = false;
+  let lastContextUrl = null;
 
   function ensureDrawer() {
     if (drawerRoot && document.body.contains(drawerRoot)) return drawerRoot;
@@ -210,7 +214,10 @@
     const stageMsg = stagePrompt ? { type: 'CELESTE_PASTE_AND_SEND', text: stagePrompt } : null;
 
     function pushMessages() {
-      if (ctxString) setCelesteContext('Current request', ctxString);
+      if (ctxString && ctxString !== lastContextUrl) {
+        lastContextUrl = ctxString;
+        setCelesteContext('Current request', ctxString);
+      }
       setSuggestedPrompts(SUGGESTED_PROMPTS);
       if (!stageMsg || !frame || !frame.contentWindow) return;
       try {

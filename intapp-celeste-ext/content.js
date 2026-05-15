@@ -426,7 +426,7 @@
       class: 'celeste-trigger',
       'aria-label': 'Open Celeste',
       title: 'Open Celeste',
-      html: `${ICONS.sparkle}<span>Celeste</span>`,
+      html: `<span>Celeste</span>`,
     });
     btn.addEventListener('click', (e) => {
       e.preventDefault();

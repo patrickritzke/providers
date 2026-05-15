@@ -66,9 +66,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     // Read the NextAuth session cookie for the Celeste origin, then attach it
     // manually — avoids the credentials:include + wildcard ACAO conflict.
-    chrome.cookies.getAll({ domain: url.hostname }, (cookies) => {
+    chrome.cookies.getAll({ url: `${celesteOrigin}/` }, (cookies) => {
       const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-      console.log('[Celeste-bg] cookies for', url.hostname, ':', cookies.map(c => c.name));
+      console.log('[Celeste-bg] cookies for', celesteOrigin, ':', cookies.map(c => c.name));
       fetch(`${celesteOrigin}/celeste/api/auth/session`, {
         headers: { Cookie: cookieHeader },
       })

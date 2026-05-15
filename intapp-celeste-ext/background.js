@@ -1,0 +1,160 @@
+// Background service worker — handles cross-origin API calls and credential tests.
+
+console.log('[Celeste-bg] service worker started v0.3.7');
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  // ── Save credentials (called by popup — routes through SW so storage is reliable) ──
+  if (msg.type === 'SAVE_CREDENTIALS') {
+    chrome.storage.local.set(msg.data, () => {
+      console.log('[Celeste-bg] credentials saved', Object.keys(msg.data));
+      try { sendResponse({ ok: true }); } catch (_) {}
+    });
+    return true;
+  }
+
+  // ── Intapp OAuth2 token test (called by credentials popup) ──────────────
+  if (msg.type === 'TEST_INTAPP') {
+    const { appHost, clientId, clientSecret, redirectUri } = msg.creds;
+    // Save credentials first, then fetch token — both in SW context
+    chrome.storage.local.set({ intapp_credentials: { appHost, clientId, clientSecret, redirectUri: redirectUri || '', tenantId: msg.creds.tenantId || '' } });
+    const url = `https://${appHost}/auth/oauth/token`;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&redirect_uri=${encodeURIComponent(redirectUri || '')}`,
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.access_token) {
+          sendResponse({ ok: false, error: data.error_description || data.error || 'No access_token in response' });
+          return;
+        }
+        const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+        chrome.storage.local.set({
+          intapp_token: { accessToken: data.access_token, refreshToken: data.refresh_token || null, expiresAt },
+        });
+        sendResponse({ ok: true, detail: `Token received — expires in ${Math.round((data.expires_in || 3600) / 60)} min` });
+      })
+      .catch(err => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  // ── D&B bearer token test ────────────────────────────────────────────────
+  if (msg.type === 'TEST_DNB') {
+    fetch('https://plus.dnb.com/v2/token', {
+      method: 'POST',
+      headers: { Authorization: `Basic ${msg.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'client_credentials' }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.access_token) {
+          sendResponse({ ok: false, error: 'No access_token in response' });
+          return;
+        }
+        sendResponse({ ok: true, detail: 'D&B token received' });
+      })
+      .catch(err => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  // ── Celeste IDM session token (for /sdk/chat iframe auth) ────────────────
+  if (msg.type === 'FETCH_CELESTE_TOKEN') {
+    const { celesteOrigin } = msg;
+
+    // AUTH_SESSION_ID is the Keycloak session cookie — may live on the IDM
+    // domain (idmeu.my.intapp.com) or the Celeste origin itself.
+    const idmOrigin = 'https://idmeu.my.intapp.com';
+    Promise.all([
+      new Promise(r => chrome.cookies.getAll({ url: `${celesteOrigin}/` }, r)),
+      new Promise(r => chrome.cookies.getAll({ url: `${idmOrigin}/` }, r)),
+    ]).then(([celesteCookies, idmCookies]) => {
+      const all = [...celesteCookies, ...idmCookies];
+      console.log('[Celeste-bg] all cookies:', all.map(c => c.name));
+      const cookieHeader = all.map(c => `${c.name}=${c.value}`).join('; ');
+
+      return fetch(`${celesteOrigin}/celeste/api/auth/session`, {
+        headers: { Cookie: cookieHeader },
+      });
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        console.log('[Celeste-bg] session keys:', Object.keys(data));
+        const token = data.token || data.accessToken || data.idmToken || data.access_token;
+        if (token) sendResponse({ ok: true, token });
+        else sendResponse({ ok: false, error: 'No token field', data });
+      })
+      .catch(err => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  // ── Corporate family tree fetch (called by content script) ───────────────
+  if (msg.type === 'FETCH_CORPORATE_FAMILY') {
+    const { partyId } = msg;
+
+    async function doFetch() {
+      const stored = await new Promise(r => chrome.storage.local.get(['intapp_token', 'intapp_credentials'], r));
+      const token   = stored.intapp_token?.accessToken || stored.intapp_token?.token;
+      const creds   = stored.intapp_credentials;
+      const appHost = creds?.appHost;
+
+      console.log('[Celeste-bg] fetching party', partyId, '| host:', appHost, '| token:', token ? token.slice(0,12)+'…' : 'MISSING');
+
+      if (!token)   throw new Error('No Intapp token — open the Celeste popup and Save & Test.');
+      if (!appHost) throw new Error('No Intapp app host — open the Celeste popup and enter credentials.');
+
+      // Check expiry and refresh if needed
+      const expiresAt = stored.intapp_token?.expiresAt || 0;
+      let activeToken = token;
+      if (expiresAt && Date.now() > expiresAt - 60_000 && creds?.clientId && creds?.clientSecret) {
+        console.log('[Celeste-bg] token expired, refreshing…');
+        try {
+          const tRes = await fetch(`https://${appHost}/auth/oauth/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `grant_type=client_credentials&client_id=${encodeURIComponent(creds.clientId)}&client_secret=${encodeURIComponent(creds.clientSecret)}&redirect_uri=${encodeURIComponent(creds.redirectUri || '')}`,
+          });
+          const tData = await tRes.json();
+          if (tData.access_token) {
+            activeToken = tData.access_token;
+            const newExpiry = Date.now() + (tData.expires_in || 3600) * 1000;
+            chrome.storage.local.set({ intapp_token: { accessToken: activeToken, expiresAt: newExpiry } });
+            console.log('[Celeste-bg] token refreshed');
+          }
+        } catch (e) {
+          console.warn('[Celeste-bg] token refresh failed', e.message);
+        }
+      }
+
+      const cleanHost = appHost.replace(/\/+$/, '');
+      const url = `https://${cleanHost}/api/api/common/v1/parties/${encodeURIComponent(partyId)}?properties=CorporateFamily`;
+      console.log('[Celeste-bg] GET', url);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${activeToken}`, Accept: 'application/json' },
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const body = await res.text();
+        // Strip HTML tags to surface the actual error message from the server
+        const plain = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+        throw new Error(`Intapp API ${res.status} at ${url} — got ${contentType || 'unknown content-type'}. Server message: ${plain}`);
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(`Intapp API ${res.status}: ${data.message || data.error || JSON.stringify(data).slice(0, 100)}`);
+      return data;
+    }
+
+    doFetch()
+      .then(data => sendResponse({ ok: true, data }))
+      .catch(err => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  return false;
+});

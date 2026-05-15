@@ -14,28 +14,29 @@
 
 const CorporateTree = (() => {
 
-  // ── Storage (same as credentials component) ─────────────────────────────
+  // ── Storage ─────────────────────────────────────────────────────────────────
   function storageGet(keys) {
     return new Promise(resolve => chrome.storage.local.get(keys, resolve));
   }
 
   // ── API ────────────────────────────────────────────────────────────────────
-  // GET /parties/{partyId}?properties=CorporateFamily
-  // Response: { corporateTrees: [{ providerType, rootCompany: { externalId, name, countryCode, partyId, children[] } }] }
-  async function fetchCorporateFamily(query, token, appHost) {
-    const url = `https://${appHost}/api/party/v1/parties/${encodeURIComponent(query)}?properties=CorporateFamily`;
-    const res = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+  async function fetchCorporateFamily(query) {
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'FETCH_CORPORATE_FAMILY', partyId: query },
+        (res) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(res);
+        }
+      );
     });
-    if (!res.ok) throw new Error(`Intapp API ${res.status}: ${await res.text().then(t => t.slice(0, 120))}`);
-    const data = await res.json();
+    if (!response.ok) throw new Error(response.error);
+    const data = response.data;
+    const trees = data.corporateTrees?.filter(t => t.rootCompany);
+    if (!trees?.length) throw new Error('No corporate tree in response.');
 
-    // Prefer BureauVanDijk tree; fall back to first available
-    const tree = data.corporateTrees?.find(t => t.providerType === 'BureauVanDijk')
-               ?? data.corporateTrees?.[0];
-    if (!tree?.rootCompany) throw new Error('No corporate tree in response.');
-
-    return flattenTree(tree.rootCompany, null);
+    const nodes = trees.flatMap(t => flattenTree(t.rootCompany, null));
+    return { nodes, raw: data };
   }
 
   // Recursively flatten the nested API tree into { id, name, parentId, countryCode, partyId }
@@ -48,11 +49,11 @@ const CorporateTree = (() => {
       countryCode: node.countryCode || '',
       partyId:     node.partyId     || '',
     });
-    (node.children || []).forEach(child => flattenTree(child, id, result));
+    (node.subCompanies || node.children || []).forEach(child => flattenTree(child, id, result));
     return result;
   }
 
-  // ── Tree builder ───────────────────────────────────────────────────────────
+  // ── Tree builder ────────────────────────────────────────────────────────────
   function buildTree(nodes) {
     const map = {};
     nodes.forEach(n => { map[n.id] = { ...n, children: [] }; });
@@ -61,10 +62,20 @@ const CorporateTree = (() => {
       if (n.parentId && map[n.parentId]) map[n.parentId].children.push(map[n.id]);
       else roots.push(map[n.id]);
     });
+    state._nodeMap = map;
     return roots;
   }
 
-  // ── Styles ─────────────────────────────────────────────────────────────────
+  // ── Tab definitions (order matters) ────────────────────────────────────────
+  const TAB_DEFS = [
+    { id: 'tree',         label: 'Tree' },
+    { id: 'closeAff',     label: 'Close Aff' },
+    { id: 'board',        label: 'Mgt/Board' },
+    { id: 'shareholders', label: 'Shareholders' },
+    { id: 'ubos',         label: 'UBOs' },
+  ];
+
+  // ── Styles ──────────────────────────────────────────────────────────────────
   const STYLES = `
     <style>
       .ct-root * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -75,32 +86,83 @@ const CorporateTree = (() => {
       }
 
       .ct-header {
-        padding: 14px 16px 10px;
+        padding: 10px 16px 8px;
         border-bottom: 1px solid #e2e8f0;
         background: #fff; flex-shrink: 0;
       }
-      .ct-title {
+      .ct-party-name {
+        font-size: 13px; font-weight: 600; color: #1e293b;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        margin-bottom: 3px;
+      }
+      .ct-party-name.placeholder {
         font-size: 11px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.6px; color: #6366f1; margin-bottom: 10px;
+        letter-spacing: 0.6px; color: #6366f1; margin-bottom: 0;
       }
-      .ct-search-row { display: flex; gap: 7px; }
-      .ct-input {
-        flex: 1; padding: 7px 10px;
-        border: 1.5px solid #e2e8f0; border-radius: 6px;
-        font-size: 12px; font-family: inherit; color: #1e293b;
-        background: #f8fafc; outline: none; transition: all 0.15s;
+      .ct-tree-meta {
+        display: flex; flex-direction: column; gap: 1px;
       }
-      .ct-input:focus { border-color: #6366f1; background: #fff; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
-      .ct-input::placeholder { color: #cbd5e1; }
-      .ct-load-btn {
-        padding: 7px 14px; border-radius: 6px; border: none;
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
-        color: #fff; font-size: 12px; font-weight: 600;
-        font-family: inherit; cursor: pointer; transition: opacity 0.15s;
-        white-space: nowrap;
+      .ct-tree-meta-row {
+        font-size: 10px; color: #64748b;
+        display: flex; gap: 6px; align-items: center;
       }
-      .ct-load-btn:hover { opacity: 0.88; }
-      .ct-load-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .ct-tree-meta-role {
+        font-weight: 600; color: #6366f1;
+      }
+      .ct-tree-meta-owner { color: #475569; font-weight: 500; }
+      .ct-tree-meta-sep { color: #cbd5e1; }
+      .ct-tree-meta-provider { color: #94a3b8; }
+
+      /* Tab bar */
+      .ct-tabs {
+        display: flex; flex-shrink: 0; overflow-x: auto;
+        border-bottom: 1px solid #e2e8f0; background: #f8fafc;
+        scrollbar-width: none;
+      }
+      .ct-tabs::-webkit-scrollbar { display: none; }
+      .ct-tabs.hidden { display: none; }
+      .ct-tab {
+        flex-shrink: 0; padding: 7px 11px; margin-bottom: -1px;
+        font-size: 11px; font-weight: 500; font-family: inherit;
+        border: none; border-bottom: 2px solid transparent;
+        background: none; cursor: pointer; color: #64748b;
+        transition: all 0.15s; white-space: nowrap;
+      }
+      .ct-tab:hover { color: #6366f1; background: #f1f5f9; }
+      .ct-tab.active { color: #6366f1; border-bottom-color: #6366f1; font-weight: 600; }
+
+      /* Filter bar */
+      .ct-filter-bar {
+        display: flex; align-items: center; justify-content: space-between;
+        flex-shrink: 0; padding: 5px 12px;
+        background: #eef2ff; border-bottom: 1px solid #c7d2fe;
+        font-size: 11px;
+      }
+      .ct-filter-bar.hidden { display: none; }
+      .ct-filter-label { color: #4338ca; }
+      .ct-filter-name { font-weight: 600; }
+      .ct-filter-clear {
+        border: none; background: none; cursor: pointer; font-size: 11px;
+        color: #6366f1; font-family: inherit; padding: 2px 4px;
+        border-radius: 3px; transition: background 0.1s;
+      }
+      .ct-filter-clear:hover { background: #c7d2fe; }
+
+      /* Tree toolbar (Filter to Party button) */
+      .ct-tree-toolbar {
+        display: flex; align-items: center; justify-content: flex-end;
+        flex-shrink: 0; padding: 4px 12px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .ct-tree-toolbar.hidden { display: none; }
+      .ct-filter-party-btn {
+        padding: 3px 10px; border-radius: 5px;
+        border: 1px solid #c7d2fe; background: #eef2ff;
+        color: #4338ca; font-size: 11px; font-weight: 500; font-family: inherit;
+        cursor: pointer; transition: all 0.15s; white-space: nowrap;
+      }
+      .ct-filter-party-btn:hover { background: #c7d2fe; border-color: #a5b4fc; }
+      .ct-filter-party-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
 
       .ct-status {
         padding: 8px 16px; font-size: 11px; color: #94a3b8;
@@ -112,6 +174,7 @@ const CorporateTree = (() => {
       .ct-tree::-webkit-scrollbar { width: 4px; }
       .ct-tree::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
 
+      /* Tree nodes */
       .ct-node { user-select: none; }
       .ct-node-row {
         display: flex; align-items: center; gap: 4px;
@@ -133,6 +196,8 @@ const CorporateTree = (() => {
       .ct-toggle.open::before   { content: '▾'; }
       .ct-toggle.closed::before { content: '▸'; }
 
+      /* Checkbox + caret wrapper */
+      .ct-chk-wrap { display: flex; align-items: center; flex-shrink: 0; }
       .ct-checkbox {
         width: 14px; height: 14px; flex-shrink: 0;
         border: 1.5px solid #cbd5e1; border-radius: 3px;
@@ -145,6 +210,13 @@ const CorporateTree = (() => {
         border-left: 1.5px solid #fff; border-bottom: 1.5px solid #fff;
         transform: rotate(-45deg) translateY(-1px);
       }
+      .ct-caret {
+        width: 11px; height: 14px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 8px; color: #cbd5e1; cursor: pointer;
+        border-radius: 2px; transition: color 0.1s; line-height: 1;
+      }
+      .ct-caret:hover { color: #6366f1; }
 
       .ct-name {
         flex: 1; font-size: 12px; color: #1e293b;
@@ -155,6 +227,33 @@ const CorporateTree = (() => {
         flex-shrink: 0; margin-left: 4px;
       }
       .ct-children.collapsed { display: none; }
+
+      /* Flat section items (non-tree tabs) */
+      .ct-section-item {
+        display: flex; align-items: center; gap: 6px;
+        padding: 5px 16px; cursor: pointer;
+        border-radius: 4px; transition: background 0.1s;
+        user-select: none;
+      }
+      .ct-section-item:hover { background: #f1f5f9; }
+      .ct-section-item.selected { background: #eef2ff; }
+      .ct-section-item .ct-name { flex: 1; font-size: 12px; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ct-section-item .ct-meta { font-size: 10px; color: #94a3b8; font-family: monospace; flex-shrink: 0; }
+
+      /* Dropdown */
+      .ct-dropdown {
+        position: fixed; z-index: 99999;
+        background: #fff; border: 1px solid #e2e8f0;
+        border-radius: 7px; box-shadow: 0 4px 20px rgba(0,0,0,0.13);
+        min-width: 180px; padding: 4px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      .ct-dropdown-item {
+        padding: 7px 12px; font-size: 12px; color: #1e293b;
+        border-radius: 4px; cursor: pointer; transition: background 0.1s;
+        white-space: nowrap;
+      }
+      .ct-dropdown-item:hover { background: #eef2ff; color: #6366f1; }
 
       /* Selection bar */
       .ct-sel-bar {
@@ -179,32 +278,98 @@ const CorporateTree = (() => {
     </style>
   `;
 
-  // ── State ──────────────────────────────────────────────────────────────────
+  // ── State ───────────────────────────────────────────────────────────────────
   const state = {
-    selected:  new Set(),
-    collapsed: new Set(),
-    nodes:     [],
-    onSelect:    null,
-    actionLabel: 'Send to Celeste',
-    actionIcon:  '💬',
+    selected:      new Set(),
+    collapsed:     new Set(),
+    nodes:         [],
+    raw:           null,
+    activeTab:     'tree',
+    _tabData:      {},
+    _nodeMap:      {},
+    _sectionItems: {},
+    _filterNodeId:  null,
+    _loadedPartyId: null,
+    _treeBound:     false,
+    onSelect:       null,
+    onChange:       null,
+    onLoad:         null,
+    actionLabel:    'Send to Celeste',
+    actionIcon:     '💬',
+    _triggerLoad:   null,
+    _filterBtnEl:   null,
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Tab data extraction ─────────────────────────────────────────────────────
+  function extractTabData(raw) {
+    const data = {};
+
+    const ca = raw.closeAffiliates;
+    if (Array.isArray(ca) && ca.length) {
+      data.closeAff = ca.map(a => ({
+        id: a.id || a.partyId || a.name, name: a.name || '', meta: a.countryCode || '',
+      }));
+    }
+
+    const bm = raw.boardMembers?.boardMembers;
+    if (Array.isArray(bm) && bm.length) {
+      data.board = bm.map(m => ({ id: m.id, name: m.name || '', meta: m.title || '' }));
+    }
+
+    const sh = raw.shareholders;
+    if (Array.isArray(sh) && sh.length) {
+      data.shareholders = sh.map(s => ({
+        id: s.id || s.partyId || s.name, name: s.name || '',
+        meta: s.shareHoldingPercentage != null ? `${s.shareHoldingPercentage}%` : '',
+      }));
+    }
+
+    const boFlat = flattenBeneficialOwners(raw.beneficialOwners?.beneficialOwners);
+    if (boFlat.length) {
+      data.ubos = boFlat.map(o => ({
+        id: o.id, name: o.name, meta: o.pct != null ? `${o.pct}%` : '',
+      }));
+    }
+
+    return data;
+  }
+
+  function flattenBeneficialOwners(list, result = []) {
+    if (!Array.isArray(list)) return result;
+    for (const bo of list) {
+      result.push({ id: bo.id, name: bo.name || '', pct: bo.shareHoldingPercentage ?? null });
+      flattenBeneficialOwners(bo.beneficialOwners, result);
+    }
+    return result;
+  }
+
+  function buildSectionItemMap(tabData) {
+    const map = {};
+    for (const key of ['closeAff', 'board', 'shareholders', 'ubos']) {
+      if (!tabData[key]) continue;
+      for (const item of tabData[key]) map[item.id] = { ...item, _section: key };
+    }
+    return map;
+  }
+
+  // ── Tree render ─────────────────────────────────────────────────────────────
   function renderNode(node, depth = 0) {
     const isSelected  = state.selected.has(node.id);
     const isCollapsed = state.collapsed.has(node.id);
     const hasChildren = node.children?.length > 0;
     const toggleClass = hasChildren ? (isCollapsed ? 'closed' : 'open') : 'leaf';
     const indent = depth * 18;
+    const showCaret = !!node.parentId || hasChildren;
 
     return `
       <div class="ct-node" data-id="${node.id}">
         <div class="ct-node-row ${isSelected ? 'selected' : ''}" data-row="${node.id}">
           <span class="ct-indent" style="width:${indent}px"></span>
           <span class="ct-toggle ${toggleClass}" data-toggle="${node.id}"></span>
-          <span class="ct-checkbox ${isSelected ? 'checked' : ''}" data-check="${node.id}"></span>
-          <span class="ct-name" title="${esc(node.name)}">${esc(node.name)}</span>
-          <span class="ct-meta">${esc(node.countryCode)} ${esc(node.id)}</span>
+          <span class="ct-chk-wrap">
+            <span class="ct-checkbox ${isSelected ? 'checked' : ''}" data-check="${node.id}"></span>${showCaret ? `<span class="ct-caret" data-caret="${node.id}">▾</span>` : ''}
+          </span>
+          <span class="ct-name" title="${esc(node.name)}${node.countryCode || node.id ? ' · ' + [node.countryCode, node.id].filter(Boolean).join(' ') : ''}">${esc(node.name)}</span>
         </div>
         <div class="ct-children ${isCollapsed ? 'collapsed' : ''}">
           ${hasChildren ? node.children.map(c => renderNode(c, depth + 1)).join('') : ''}
@@ -214,63 +379,309 @@ const CorporateTree = (() => {
 
   function renderTree(treeEl, roots) {
     treeEl.innerHTML = roots.map(r => renderNode(r, 0)).join('');
+  }
 
-    treeEl.querySelectorAll('[data-toggle]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        const id = btn.dataset.toggle;
+  // Called once after mount — single delegated listener survives re-renders
+  function bindTreeEvents(treeEl, filterBarEl) {
+    treeEl.addEventListener('click', e => {
+      // Caret → dropdown (must check before row)
+      const caretEl = e.target.closest('[data-caret]');
+      if (caretEl) {
+        showNodeDropdown(caretEl.dataset.caret, caretEl, treeEl, filterBarEl);
+        return;
+      }
+
+      // Toggle expand/collapse
+      const toggleEl = e.target.closest('[data-toggle]');
+      if (toggleEl) {
+        const id = toggleEl.dataset.toggle;
         if (state.collapsed.has(id)) state.collapsed.delete(id);
         else state.collapsed.add(id);
-        renderTree(treeEl, buildTree(state.nodes));
+        renderTree(treeEl, getTreeRoots());
         updateSelBar();
-      });
-    });
+        return;
+      }
 
-    treeEl.querySelectorAll('[data-row]').forEach(row => {
-      row.addEventListener('click', e => {
-        if (e.target.dataset.toggle) return;
-        const id = row.dataset.row;
+      // Row → checkbox toggle
+      const rowEl = e.target.closest('[data-row]');
+      if (rowEl) {
+        const id = rowEl.dataset.row;
         if (state.selected.has(id)) state.selected.delete(id);
         else state.selected.add(id);
-        renderTree(treeEl, buildTree(state.nodes));
+        renderTree(treeEl, getTreeRoots());
+        updateSelBar();
+      }
+    });
+  }
+
+  // ── Tab content render (for non-tree tabs) ──────────────────────────────────
+  function renderTabContent(treeEl, items) {
+    treeEl.innerHTML = items.map(item => {
+      const isSelected = state.selected.has(item.id);
+      return `
+        <div class="ct-section-item ${isSelected ? 'selected' : ''}" data-section-item="${esc(item.id)}">
+          <span class="ct-checkbox ${isSelected ? 'checked' : ''}" data-check="${esc(item.id)}"></span>
+          <span class="ct-name" title="${esc(item.name)}">${esc(item.name)}</span>
+          <span class="ct-meta">${esc(item.meta || '')}</span>
+        </div>`;
+    }).join('');
+
+    treeEl.querySelectorAll('[data-section-item]').forEach(row => {
+      row.addEventListener('click', () => {
+        const id = row.dataset.sectionItem;
+        if (state.selected.has(id)) state.selected.delete(id);
+        else state.selected.add(id);
+        row.querySelector('.ct-checkbox')?.classList.toggle('checked', state.selected.has(id));
+        row.classList.toggle('selected', state.selected.has(id));
         updateSelBar();
       });
     });
+  }
+
+  // ── Tabs ────────────────────────────────────────────────────────────────────
+  function renderTabBar(tabsEl) {
+    const available = { tree: true, ...Object.fromEntries(Object.keys(state._tabData).map(k => [k, true])) };
+    tabsEl.innerHTML = TAB_DEFS
+      .filter(t => available[t.id])
+      .map(t => `<button class="ct-tab ${state.activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${esc(t.label)}</button>`)
+      .join('');
+    tabsEl.classList.remove('hidden');
+  }
+
+  function switchTab(tabId, treeEl, tabsEl, filterBarEl) {
+    state.activeTab = tabId;
+    tabsEl.querySelectorAll('.ct-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tabId);
+    });
+    if (tabId === 'tree') {
+      renderTree(treeEl, getTreeRoots());
+    } else {
+      filterBarEl.classList.add('hidden');
+      renderTabContent(treeEl, state._tabData[tabId] || []);
+    }
+    updateFilterBtn();
+  }
+
+  // ── Checkbox dropdown ───────────────────────────────────────────────────────
+  function showNodeDropdown(nodeId, caretEl, treeEl, filterBarEl) {
+    document.querySelectorAll('.ct-dropdown').forEach(d => d.remove());
+
+    const node = state._nodeMap[nodeId];
+    if (!node) return;
+
+    const hasChildren = node.children?.length > 0;
+    const options = [];
+
+    if (node.parentId) {
+      options.push({
+        label: 'Select all parents',
+        action() {
+          let cur = state._nodeMap[node.parentId];
+          while (cur) {
+            state.selected.add(cur.id);
+            cur = cur.parentId ? state._nodeMap[cur.parentId] : null;
+          }
+          renderTree(treeEl, getTreeRoots());
+          updateSelBar();
+        },
+      });
+    }
+
+    if (hasChildren) {
+      options.push({
+        label: 'Select direct children',
+        action() {
+          node.children.forEach(c => state.selected.add(c.id));
+          renderTree(treeEl, getTreeRoots());
+          updateSelBar();
+        },
+      });
+      options.push({
+        label: 'Select all children',
+        action() {
+          selectAllDescendants(node);
+          renderTree(treeEl, getTreeRoots());
+          updateSelBar();
+        },
+      });
+    }
+
+    options.push({
+      label: state._filterNodeId === nodeId ? 'Clear filter' : 'Filter to party',
+      action() {
+        if (state._filterNodeId === nodeId) clearFilter(treeEl, filterBarEl);
+        else applyFilter(nodeId, treeEl, filterBarEl);
+      },
+    });
+
+    if (!options.length) return;
+
+    const dropdown = document.createElement('div');
+    Object.assign(dropdown.style, {
+      position: 'fixed', zIndex: '2147483647',
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: '7px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+      minWidth: '190px', padding: '4px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontSize: '12px',
+    });
+
+    for (const opt of options) {
+      const item = document.createElement('div');
+      item.textContent = opt.label;
+      Object.assign(item.style, {
+        padding: '8px 14px', borderRadius: '4px',
+        cursor: 'pointer', color: '#1e293b', whiteSpace: 'nowrap',
+      });
+      item.addEventListener('mouseenter', () => Object.assign(item.style, { background: '#eef2ff', color: '#6366f1' }));
+      item.addEventListener('mouseleave', () => Object.assign(item.style, { background: '', color: '#1e293b' }));
+      item.addEventListener('mousedown', e => {
+        e.preventDefault(); // keep focus, prevent blur-before-click
+        e.stopPropagation();
+        opt.action();
+        dropdown.remove();
+      });
+      dropdown.appendChild(item);
+    }
+    document.body.appendChild(dropdown);
+
+    const rect = caretEl.getBoundingClientRect();
+    dropdown.style.top  = (rect.bottom + 2) + 'px';
+    dropdown.style.left = rect.left + 'px';
+
+    // Close on next click outside
+    const close = e => { if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', close); } };
+    requestAnimationFrame(() => document.addEventListener('click', close));
+  }
+
+  function selectAllDescendants(node) {
+    if (!node.children) return;
+    for (const child of node.children) {
+      state.selected.add(child.id);
+      selectAllDescendants(child);
+    }
+  }
+
+  // ── Filter to party ──────────────────────────────────────────────────────────
+  function getFilterIds(nodeId) {
+    // Need the full nodeMap — build from all nodes first
+    buildTree(state.nodes);
+    const ids = new Set([nodeId]);
+    // ancestors
+    let cur = state._nodeMap[nodeId];
+    while (cur && cur.parentId) {
+      ids.add(cur.parentId);
+      cur = state._nodeMap[cur.parentId];
+    }
+    // descendants
+    function addDesc(n) {
+      for (const c of (n.children || [])) { ids.add(c.id); addDesc(c); }
+    }
+    addDesc(state._nodeMap[nodeId] || {});
+    return ids;
+  }
+
+  function getTreeRoots() {
+    if (!state._filterNodeId) return buildTree(state.nodes);
+    const ids = getFilterIds(state._filterNodeId);
+    return buildTree(state.nodes.filter(n => ids.has(n.id)));
+  }
+
+  function updateFilterBtn() {
+    const btn     = state._filterBtnEl;
+    const toolbar = btn && btn.closest('.ct-tree-toolbar');
+    if (!btn) return;
+    const onTree = state.activeTab === 'tree' && !!state._loadedPartyId;
+    toolbar.classList.toggle('hidden', !onTree);
+    btn.classList.toggle('active', !!state._filterNodeId);
+    btn.textContent = state._filterNodeId ? 'Clear Filter' : 'Filter to Party';
+  }
+
+  function applyFilter(nodeId, treeEl, filterBarEl) {
+    state._filterNodeId = nodeId;
+    state.collapsed.clear();
+    renderTree(treeEl, getTreeRoots());
+    updateSelBar();
+    const node = state._nodeMap[nodeId];
+    filterBarEl.querySelector('.ct-filter-name').textContent = node ? node.name : nodeId;
+    filterBarEl.classList.remove('hidden');
+    updateFilterBtn();
+  }
+
+  function clearFilter(treeEl, filterBarEl) {
+    state._filterNodeId = null;
+    filterBarEl.classList.add('hidden');
+    renderTree(treeEl, getTreeRoots());
+    updateSelBar();
+    updateFilterBtn();
+  }
+
+  // ── Misc ─────────────────────────────────────────────────────────────────────
+  function getSelectedEntities() {
+    const nodeMap = {};
+    state.nodes.forEach(n => { nodeMap[n.id] = n; });
+    const sectionItems = state._sectionItems || {};
+    return [...state.selected].map(id => {
+      if (nodeMap[id]) {
+        const n = nodeMap[id];
+        return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode, parentId: n.parentId || null };
+      }
+      if (sectionItems[id]) {
+        const s = sectionItems[id];
+        return { id: s.id, name: s.name, meta: s.meta, _section: s._section };
+      }
+      return null;
+    }).filter(Boolean);
   }
 
   function updateSelBar() {
-    const bar = document.querySelector('.ct-sel-bar');
+    const bar     = document.querySelector('.ct-sel-bar');
     const countEl = document.querySelector('.ct-sel-count');
     if (!bar) return;
     const n = state.selected.size;
-    bar.classList.toggle('visible', n > 0);
+    bar.classList.toggle('visible', n > 0 || !!state.actionLabel);
     if (countEl) countEl.innerHTML = `<strong>${n}</strong> selected`;
+    if (state.onChange) state.onChange(getSelectedEntities());
   }
 
-  // ── Mount ─────────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Mount ────────────────────────────────────────────────────────────────────
   function mount(selector = '#tree-root', opts = {}) {
     const root = document.querySelector(selector);
     if (!root) { console.error('[CorporateTree] mount target not found:', selector); return; }
 
     state.onSelect    = opts.onSelect    || null;
-    state.actionLabel = opts.actionLabel || 'Send to Celeste';
+    state.onChange    = opts.onChange    || null;
+    state.onLoad      = opts.onLoad      || null;
+    state.actionLabel = 'actionLabel' in opts ? opts.actionLabel : 'Send to Celeste';
     state.actionIcon  = opts.actionIcon  || '💬';
     state.selected.clear();
     state.collapsed.clear();
+    state.activeTab  = 'tree';
+    state._treeBound = false;
 
     root.innerHTML = `
       ${STYLES}
       <div class="ct-root">
         <div class="ct-header">
-          <div class="ct-title">Corporate Tree</div>
-          <div class="ct-search-row">
-            <input class="ct-input" id="ct-query" type="text"
-              placeholder="Party ID (e.g. US123456)"
-              autocomplete="off" spellcheck="false" />
-            <button class="ct-load-btn" id="ct-load">Load</button>
-          </div>
+          <div class="ct-party-name placeholder" id="ct-party-name">Corporate Tree</div>
+          <div class="ct-tree-meta" id="ct-tree-meta"></div>
         </div>
-        <div class="ct-status" id="ct-status">Enter a party ID to load its corporate family.</div>
+        <div class="ct-tabs hidden" id="ct-tabs"></div>
+        <div class="ct-tree-toolbar hidden" id="ct-tree-toolbar">
+          <button class="ct-filter-party-btn" id="ct-filter-party-btn"
+            title="Filter tree to the party's parent and children relationships only">
+            Filter to Party
+          </button>
+        </div>
+        <div class="ct-filter-bar hidden" id="ct-filter-bar">
+          <span class="ct-filter-label">Filtered: <span class="ct-filter-name"></span></span>
+          <button class="ct-filter-clear" id="ct-filter-clear">✕ Clear</button>
+        </div>
+        <div class="ct-status" id="ct-status">Waiting for party data…</div>
         <div class="ct-tree" id="ct-tree"></div>
         <div class="ct-sel-bar">
           <span class="ct-sel-count" id="ct-sel-count"><strong>0</strong> selected</span>
@@ -281,77 +692,134 @@ const CorporateTree = (() => {
         </div>
       </div>`;
 
-    const queryInput = document.getElementById('ct-query');
-    const loadBtn    = document.getElementById('ct-load');
-    const statusEl   = document.getElementById('ct-status');
-    const treeEl     = document.getElementById('ct-tree');
-    const actionBtn  = document.getElementById('ct-action');
+    const partyNameEl    = document.getElementById('ct-party-name');
+    const treeMetaEl     = document.getElementById('ct-tree-meta');
+    const filterPartyBtn = document.getElementById('ct-filter-party-btn');
+    state._filterBtnEl   = filterPartyBtn;
+    const statusEl    = document.getElementById('ct-status');
+    const treeEl      = document.getElementById('ct-tree');
+    const tabsEl      = document.getElementById('ct-tabs');
+    const filterBarEl = document.getElementById('ct-filter-bar');
+    const actionBtn   = document.getElementById('ct-action');
 
-    async function load() {
-      const query = queryInput.value.trim();
-      if (!query) return;
+    document.getElementById('ct-filter-clear').addEventListener('click', () => {
+      clearFilter(treeEl, filterBarEl);
+    });
 
-      loadBtn.disabled = true;
-      loadBtn.textContent = 'Loading…';
-      statusEl.textContent = 'Fetching corporate family…';
+    filterPartyBtn.addEventListener('click', () => {
+      if (state._filterNodeId) {
+        clearFilter(treeEl, filterBarEl);
+      } else if (state._loadedPartyId) {
+        applyFilter(state._loadedPartyId, treeEl, filterBarEl);
+      }
+    });
+
+    async function load(partyId, rawData) {
+      if (!partyId) return;
+
+      partyNameEl.textContent = partyId;
+      partyNameEl.className = 'ct-party-name';
+      treeMetaEl.innerHTML = '';
+      statusEl.textContent = 'Loading…';
       statusEl.className = 'ct-status';
       treeEl.innerHTML = '';
+      tabsEl.innerHTML = '';
+      tabsEl.classList.add('hidden');
+      filterBarEl.classList.add('hidden');
       state.selected.clear();
       state.collapsed.clear();
+      state.activeTab      = 'tree';
+      state._filterNodeId  = null;
+      state._loadedPartyId = null;
       updateSelBar();
+      updateFilterBtn();
 
       try {
-        const { intapp_token, intapp_credentials } = await storageGet(['intapp_token', 'intapp_credentials']);
-        const token   = intapp_token?.token || intapp_token?.accessToken;
-        const appHost = intapp_credentials?.appHost;
-        if (!token)   throw new Error('No Intapp token — open the credentials extension and save & test Intapp first.');
-        if (!appHost) throw new Error('No Intapp app host configured in credentials.');
-
-        state.nodes = await fetchCorporateFamily(query, token, appHost);
+        let result;
+        if (rawData) {
+          const trees = rawData.corporateTrees?.filter(t => t.rootCompany);
+          if (!trees?.length) { statusEl.textContent = 'No corporate tree in response.'; return; }
+          result = { nodes: trees.flatMap(t => flattenTree(t.rootCompany, null)), raw: rawData };
+        } else {
+          result = await fetchCorporateFamily(partyId);
+        }
+        state.nodes = result.nodes;
+        state.raw   = result.raw;
         if (!state.nodes.length) { statusEl.textContent = 'No results found.'; return; }
 
-        statusEl.textContent = `${state.nodes.length} entities — ${query}`;
-        renderTree(treeEl, buildTree(state.nodes));
+        state._tabData      = extractTabData(state.raw);
+        state._sectionItems = buildSectionItemMap(state._tabData);
+
+        renderTabBar(tabsEl);
+        tabsEl.querySelectorAll('.ct-tab').forEach(btn => {
+          btn.addEventListener('click', () => switchTab(btn.dataset.tab, treeEl, tabsEl, filterBarEl));
+        });
+
+        // Header: use the top-level party data from the raw API response
+        const rawParty   = state.raw;
+        const partyName  = rawParty.name  || partyId;
+        const partyDispId = rawParty.partyId || rawParty.externalId || partyId;
+        partyNameEl.textContent = `${partyName} (${partyDispId})`;
+        partyNameEl.className = 'ct-party-name';
+
+        // Sub-header: role per tree — compare internal partyId (not provider externalId)
+        const thisInternalId = String(rawParty.partyId || partyId);
+        treeMetaEl.innerHTML = (state.raw.corporateTrees || []).map(tree => {
+          const root           = tree.rootCompany;
+          const rootInternalId = String(root?.partyId || '');
+          const provider       = tree.providerType || tree.name || '';
+          let roleHtml;
+          if (rootInternalId === thisInternalId) {
+            roleHtml = `<span class="ct-tree-meta-role">Ultimate Owner</span>`;
+          } else {
+            const rootName = root?.name || rootInternalId;
+            roleHtml = `<span class="ct-tree-meta-role">Subsidiary of</span> <span class="ct-tree-meta-owner">${esc(rootName)} (${esc(rootInternalId)})</span>`;
+          }
+          return `<div class="ct-tree-meta-row">
+            ${roleHtml}
+            ${provider ? `<span class="ct-tree-meta-sep">·</span><span class="ct-tree-meta-provider">${esc(provider)}</span>` : ''}
+          </div>`;
+        }).join('');
+
+        state._loadedPartyId = partyId;
+        statusEl.textContent = `${state.nodes.length} entities`;
+        renderTree(treeEl, getTreeRoots());
+        updateFilterBtn();
+        if (!state._treeBound) { bindTreeEvents(treeEl, filterBarEl); state._treeBound = true; }
+        if (state.onLoad) state.onLoad(state.nodes);
       } catch (err) {
         statusEl.textContent = `⚠ ${err.message}`;
         statusEl.className = 'ct-status err';
-      } finally {
-        loadBtn.disabled = false;
-        loadBtn.textContent = 'Load';
       }
     }
 
-    loadBtn.addEventListener('click', load);
-    queryInput.addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+    state._triggerLoad = (partyId, rawData) => load(partyId, rawData);
+
+    actionBtn.style.display = state.actionLabel ? '' : 'none';
 
     actionBtn.addEventListener('click', () => {
       if (!state.onSelect) return;
-      const nodeMap = {};
-      state.nodes.forEach(n => { nodeMap[n.id] = n; });
-      // Selected entity shape — includes all IDs available from the API
-      const entities = [...state.selected].map(id => {
-        const n = nodeMap[id];
-        return { id: n.id, partyId: n.partyId, name: n.name, countryCode: n.countryCode };
-      }).filter(Boolean);
-      state.onSelect({ entities, actionLabel: state.actionLabel });
+      state.onSelect({ entities: getSelectedEntities(), actionLabel: state.actionLabel });
     });
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  function esc(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  // Programmatically load a party by ID (called by content.js on tree trigger)
+  function loadParty(partyId, rawData) {
+    if (state._triggerLoad) state._triggerLoad(partyId, rawData);
   }
 
-  return { mount };
+  return { mount, loadParty };
 
 })();
+
+// Expose on window so other content scripts in the same extension can access it
+window.CorporateTree = CorporateTree;
 
 // Auto-mount if default anchor exists
 document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('tree-root')) {
     CorporateTree.mount('#tree-root', {
       onSelect: ({ entities }) => {
-        // TODO: wire to Celeste chat / grid / conflicts
         console.log('[CorporateTree] selected:', entities);
       },
     });

@@ -59,6 +59,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // ── Celeste IDM session token (for /sdk/chat iframe auth) ────────────────
+  if (msg.type === 'FETCH_CELESTE_TOKEN') {
+    const { celesteOrigin } = msg;
+    fetch(`${celesteOrigin}/celeste/api/auth/session`, { credentials: 'include' })
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        console.log('[Celeste-bg] session response keys:', Object.keys(data));
+        const token = data.token || data.accessToken || data.idmToken || data.access_token;
+        if (token) sendResponse({ ok: true, token });
+        else sendResponse({ ok: false, error: 'No token field in response', data });
+      })
+      .catch(err => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
   // ── Corporate family tree fetch (called by content script) ───────────────
   if (msg.type === 'FETCH_CORPORATE_FAMILY') {
     const { partyId } = msg;

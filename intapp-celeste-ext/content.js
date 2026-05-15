@@ -269,15 +269,16 @@
 
     // Iframe asks for IDM token on load
     if (data.source === 'CelesteSDK_IFRAME' && data.type === 'CELESTE_SDK_REQUEST_TOKEN') {
-      chrome.storage.local.get(['intapp_token'], (stored) => {
-        const token = stored.intapp_token?.accessToken || stored.intapp_token?.token;
-        if (token && celesteFrame?.contentWindow) {
+      chrome.runtime.sendMessage({ type: 'FETCH_CELESTE_TOKEN', celesteOrigin: CELESTE_ORIGIN }, (res) => {
+        if (res?.ok && celesteFrame?.contentWindow) {
           try {
             celesteFrame.contentWindow.postMessage(
-              { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_TOKEN', payload: { token } },
+              { source: 'CelesteSDK', type: 'CELESTE_SDK_SET_TOKEN', payload: { token: res.token } },
               CELESTE_ORIGIN
             );
           } catch (_) {}
+        } else {
+          console.warn('[Celeste] failed to fetch IDM token:', res?.error, res?.data);
         }
       });
       return;
